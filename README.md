@@ -55,6 +55,10 @@ skill 別の外部依存。
 }
 ```
 
+## 実装ノート
+
+agentskills.io 仕様および Claude Code 固有の挙動に関する実証ベースのメモは [NOTES.md](NOTES.md) を参照。`${CLAUDE_SKILL_DIR}` の置換範囲、`allowed-tools` format の落とし穴、検証の再現方法など。
+
 ## ライセンス
 
 MIT — [LICENSE](LICENSE) を参照。
