@@ -16,17 +16,19 @@ gh skill install rysk-tanaka/skills auto-commit --agent claude-code --scope user
 
 ## Skills 一覧
 
-| Name | 説明 |
-| --- | --- |
-| `auto-commit` | ステージ済みの変更から Conventional Commits メッセージ候補を生成 |
-| `await-ci` | PR の GitHub Actions CI ステータスを確認・完了待機 |
-| `pr` | ブランチ差分を分析し、リポジトリの template に従って pull request を作成 |
-| `resolve-review` | PR の未解決レビューコメントを取得・分類(CI 待機 helper を同梱) |
-| `suggest-branch` | working tree の状態からブランチ名候補を提案 |
-| `codex-review` | Codex CLI でコードレビューを実行し、結果を分類して報告 |
-| `drawio` | `.drawio` 図表を生成、PNG / SVG / PDF へエクスポート可 |
-| `drawio-aws` | `drawio` 経由で AWS 4 アイコンセットを使った AWS アーキテクチャ図を生成 |
-| `cloudwatch-logs` | CloudWatch Logs の取得・検索(Lambda ログ解析、エラー調査) |
+| Name | 推奨 scope | 説明 |
+| --- | --- | --- |
+| `auto-commit` | user | ステージ済みの変更から Conventional Commits メッセージ候補を生成 |
+| `await-ci` | user | PR の GitHub Actions CI ステータスを確認・完了待機 |
+| `pr` | user | ブランチ差分を分析し、リポジトリの template に従って pull request を作成 |
+| `resolve-review` | user | PR の未解決レビューコメントを取得・分類(CI 待機 helper を同梱) |
+| `suggest-branch` | user | working tree の状態からブランチ名候補を提案 |
+| `codex-review` | user | Codex CLI でコードレビューを実行し、結果を分類して報告 |
+| `drawio` | project | `.drawio` 図表を生成、PNG / SVG / PDF へエクスポート可 |
+| `drawio-aws` | project | `drawio` 経由で AWS 4 アイコンセットを使った AWS アーキテクチャ図を生成 |
+| `cloudwatch-logs` | project | CloudWatch Logs の取得・検索(Lambda ログ解析、エラー調査) |
+
+「推奨 scope」は `gh skill install --scope <user|project>` の指針で、frontmatter `description` の `(user)` suffix と対応。user scope はどのリポジトリでも常用したい汎用 skill (git / PR / CI 系)、project scope は特定プロジェクトに紐付く domain 固有 skill (AWS, draw.io 等) を想定。あくまで推奨で、好みで上書き可能。
 
 各 skill の `SKILL.md` 本文はほとんど日本語で記述されています(作者が日本人のため)。コード、frontmatter、helper script は英語です。
 
