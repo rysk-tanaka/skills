@@ -57,6 +57,8 @@ skill 別の外部依存。
 }
 ```
 
+実運用例 (全 skill 分の絶対パスエントリ): [rysk-tanaka/dotfiles の `.claude/settings.json`](https://github.com/rysk-tanaka/dotfiles/blob/main/.claude/settings.json)。
+
 ## 実装ノート
 
 agentskills.io 仕様および Claude Code 固有の挙動に関する実証ベースのメモは [NOTES.md](NOTES.md) を参照。`${CLAUDE_SKILL_DIR}` の置換範囲、`allowed-tools` format の落とし穴、検証の再現方法など。
