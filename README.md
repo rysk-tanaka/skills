@@ -63,6 +63,30 @@ skill 別の外部依存。
 
 agentskills.io 仕様および Claude Code 固有の挙動に関する実証ベースのメモは [NOTES.md](NOTES.md) を参照。`${CLAUDE_SKILL_DIR}` の置換範囲、`allowed-tools` format の落とし穴、検証の再現方法など。
 
+## リリース (maintainer 向け)
+
+```bash
+# 1. frontmatter / メタデータ validation
+gh skill publish --dry-run
+
+# 2. release tag を切る (GitHub Release を作成、--fix で provenance metadata を剥がす)
+gh skill publish --fix --tag vX.Y.Z
+
+# 3. topic 確認 (初回のみ、agent-skills が無ければ追加)
+gh repo edit rysk-tanaka/skills --add-topic agent-skills
+```
+
+`gh skill publish` は git remote URL からリポジトリを判定する。複数アカウント運用などで SSH host alias (`git@github.com-<alias>:...` 形式) を使っている場合は「not a GitHub repository」と warning が出るので、publish 時のみ remote を標準ホスト形式 (`git@github.com:<owner>/<repo>.git`) に切り替える (終わったら戻す)。
+
+各 skill の動作確認は fresh session で行うのが信頼性が高い。同一セッションは permission キャッシュが残るため。
+
+```bash
+cd /tmp && claude -p --output-format json --max-turns 5 '/<skill-name>' \
+  | jq '.[] | select(.type=="result") | {result, permission_denials}'
+```
+
+`permission_denials` 配列が空なら通過、要素があれば該当 tool 呼び出しが拒否されている。
+
 ## ライセンス
 
 MIT — [LICENSE](LICENSE) を参照。

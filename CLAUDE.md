@@ -19,36 +19,11 @@ skills/<skill-name>/
 
 `SKILL.md` 1 つにつき skill 1 つ。skill 名 = ディレクトリ名 = frontmatter `name`。helper script は SKILL.md 本文から呼び出され、構造化データ(主に JSON)を stdout に吐いて LLM に渡す pattern。
 
-## 検証コマンド
+## 検証 / リリース
 
-このリポジトリは build / test / lint の中央 task runner を持たない。skill ごとに以下で検証する。
-
-```bash
-# frontmatter / メタデータ validation
-gh skill publish --dry-run
-
-# fresh session で実機検証(同一セッションは permission キャッシュが残る)
-cd /tmp && claude -p --output-format json --max-turns 5 '/<skill-name>' \
-  | jq '.[] | select(.type=="result") | {result, permission_denials}'
-```
-
-`permission_denials` 配列が空なら通過、要素があれば該当 tool 呼び出しが拒否されている。
+このリポジトリは build / test / lint の中央 task runner を持たない。検証コマンド (`gh skill publish --dry-run` / fresh session での実機テスト) と release 手順 (`gh skill publish --fix --tag`) は [README.md の「リリース」節](README.md#リリース-maintainer-向け) を参照。
 
 linter は dotfiles repo から symlink された `.markdownlint-cli2.jsonc` と `.pre-commit-config.yaml` が pre-commit hook として動く。
-
-## リリース
-
-「検証コマンド」の `--dry-run` を通したうえで release tag を切る。
-
-```bash
-# release tag を切る (GitHub Release を作成、--fix で provenance metadata を剥がす)
-gh skill publish --fix --tag vX.Y.Z
-
-# topic 確認 (初回のみ、agent-skills が無ければ追加)
-gh repo edit rysk-tanaka/skills --add-topic agent-skills
-```
-
-`gh skill publish` は git remote URL からリポジトリを判定する。SSH host alias (`git@github.com-rysk-tanaka:...`) では「not a GitHub repository」と warning が出るので、publish 時のみ remote を `git@github.com:rysk-tanaka/skills.git` 形式に切り替える(終わったら戻す)。
 
 ## maintainer 環境での消費
 
