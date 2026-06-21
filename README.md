@@ -43,6 +43,7 @@ skill 別の外部依存。
 - `codex-review`: Codex CLI (`codex`)
 - `drawio`, `drawio-aws`: draw.io デスクトップアプリ
 - `cloudwatch-logs`: `uv`, AWS 認証情報
+- `design-doc-yaml`: `uv`
 
 ## 権限
 

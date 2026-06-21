@@ -359,6 +359,12 @@ def build_report(doc):
     # they surface in the report and gate --strict (not just stderr).
     format_warnings = []
 
+    # concepts is schema-required: without it the report would render an empty
+    # structure and report "no defects", giving false reassurance.
+    raw_concepts = doc.get("concepts")
+    if raw_concepts is None or (isinstance(raw_concepts, list) and not raw_concepts):
+        format_warnings.append("`concepts` が未設定/空です（スキーマ上必須）")
+
     version = doc.get("version")
     if version is None:
         format_warnings.append(
