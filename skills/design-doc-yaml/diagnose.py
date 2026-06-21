@@ -52,7 +52,10 @@ try:
     import yaml
 except ImportError:
     sys.stderr.write(
-        "PyYAML is required. Install it with:\n"
+        "PyYAML is required. Run this script with `uv run`, which installs the\n"
+        "inline PEP 723 dependencies automatically:\n"
+        "    uv run diagnose.py path/to/design.yaml\n"
+        "Or install it manually for a plain `python` run:\n"
         "    pip install pyyaml\n"
     )
     sys.exit(2)
@@ -139,7 +142,9 @@ def section_graph(concepts, relations):
     # declare nodes (so isolated concepts still show up)
     for c in concepts:
         cid = c.get("id")
-        if cid is None:
+        # Same empty/whitespace filter as `ids`: a concept with no usable id is
+        # reported as id未設定 in section_defects, so keep it out of the graph too.
+        if not str(cid or "").strip():
             continue
         imp = str(c.get("importance") or "").lower()
         label = _esc(label_of.get(cid, cid))
