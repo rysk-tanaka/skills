@@ -64,6 +64,7 @@ except ImportError:
 # --- helpers ---------------------------------------------------------------
 
 def _as_list(node, key):
+    """Return node[key] as a list (wrap a scalar, treat missing as empty)."""
     v = (node or {}).get(key)
     if v is None:
         return []
@@ -88,6 +89,7 @@ def _esc(text):
 
 
 def _md_cell(text):
+    """Escape a value for use inside a Markdown table cell."""
     return str(text).replace("|", "\\|").replace("\n", " ").strip()
 
 
@@ -121,6 +123,7 @@ IMPORTANCE_ORDER = {"high": 0, "medium": 1, "med": 1, "low": 2}
 # --- report sections -------------------------------------------------------
 
 def section_overview(doc):
+    """Render the report header from the target's title and type."""
     target = doc.get("target") or {}
     if not isinstance(target, dict):
         target = {}
@@ -173,6 +176,7 @@ def section_graph(concepts, relations):
 
 
 def section_defects(concepts, relations, risks, open_qs, format_warnings):
+    """Render the 要確認 section; return (markdown, any_defect_found)."""
     # only ids that are actually usable; missing/empty ones are reported separately
     # (concepts_no_id below) instead of polluting orphan/dangling/duplicate output.
     ids = {c.get("id") for c in concepts if str(c.get("id") or "").strip()}
@@ -280,6 +284,7 @@ def section_defects(concepts, relations, risks, open_qs, format_warnings):
 
 
 def section_concepts_table(concepts):
+    """Render the concept table sorted by importance (high first)."""
     def sort_key(c):
         imp = str(c.get("importance") or "").lower()
         return (IMPORTANCE_ORDER.get(imp, 1), str(c.get("id")))
@@ -299,6 +304,7 @@ def section_concepts_table(concepts):
 
 
 def section_risks_table(risks):
+    """Render the risk table sorted by severity, or "" when there are none."""
     if not risks:
         return ""
     lines = ["## risk 一覧", "",
@@ -316,6 +322,7 @@ def section_risks_table(risks):
 
 
 def section_open_questions(open_qs):
+    """Render the open-questions list (🚧 marks blocking), or "" when empty."""
     if not open_qs:
         return ""
     lines = ["## open questions", ""]
@@ -327,6 +334,7 @@ def section_open_questions(open_qs):
 
 
 def section_synthesis(syn):
+    """Render the synthesis steering hints, or "" when none are given."""
     if not syn:
         return ""
     lines = ["## synthesis（清書への舵取り）", ""]
@@ -366,6 +374,7 @@ def _mappings(items, kind, warnings):
 
 
 def build_report(doc):
+    """Assemble the full report from a parsed YAML doc; return (markdown, any_defect)."""
     # Input-format problems collected here and threaded into section_defects so
     # they surface in the report and gate --strict (not just stderr).
     format_warnings = []
@@ -424,6 +433,7 @@ def build_report(doc):
 
 
 def main(argv=None):
+    """CLI entry point: parse args, read YAML, write the report, return an exit code."""
     ap = argparse.ArgumentParser(description="Diagnose a design YAML scaffold.")
     ap.add_argument("yaml_path", help="path to the design YAML")
     ap.add_argument("-o", "--out", help="write report here (default: stdout)")
