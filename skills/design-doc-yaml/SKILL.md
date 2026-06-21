@@ -3,7 +3,7 @@ name: design-doc-yaml
 description: 設計内容をYAMLに集約し診断レビューを経て肥大化しないMarkdown設計書を作成 (user)
 license: MIT
 argument-hint: "[topic]"
-allowed-tools: Bash(uv run *) Write
+allowed-tools: Read Bash(uv run *) Write
 ---
 
 # 設計書作成（YAMLファースト）

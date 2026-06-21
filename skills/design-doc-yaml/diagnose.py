@@ -226,8 +226,13 @@ def section_defects(concepts, relations, risks, open_qs):
             lines.append(f"- {_md_cell(rk.get('label', '(no label)'))}")
         lines.append("")
     if blocking:
+        # Separate from the structural defects above: a blocking question is
+        # deliberately foregrounded, not a defect to delete (see SKILL.md).
+        if any_defect:
+            lines.append("---")
+            lines.append("")
         any_defect = True
-        lines.append("**ブロッキングな open question** — 設計を止めうる未解決事項:")
+        lines.append("**ブロッキングな open question** — 設計を止めうる未解決事項（構造欠陥ではありません。解決するか、残すと決めてください）:")
         for q in blocking:
             lines.append(f"- {_md_cell(q.get('question', '(no text)'))}")
         lines.append("")
