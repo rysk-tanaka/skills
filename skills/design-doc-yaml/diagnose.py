@@ -16,9 +16,11 @@ It RENDERS the structure you authored:
 
 It FLAGS structural defects to fix (delete the problem by editing the YAML):
 
+  - input format problems               -> non-mapping list elements, wrong/missing version
   - concepts with no id                 -> unreferenceable; would vanish from analysis
   - orphan concepts                     -> something you forgot to wire up
   - dangling relation refs              -> a relation points at a missing id
+  - incomplete relations                -> a relation is missing its `from` or `to`
   - duplicate concept ids               -> a later entry silently overwrites an earlier one
   - risks without a disposition         -> a risk you noted but never resolved
 
@@ -41,7 +43,10 @@ Use --strict to exit non-zero when any defect OR a blocking question remains
 import argparse
 import re
 import sys
+from collections import Counter
 from collections.abc import Hashable
+
+EXPECTED_VERSION = "design/v1"
 
 try:
     import yaml
@@ -156,16 +161,20 @@ def section_graph(concepts, relations):
     return "\n".join(lines)
 
 
-def section_defects(concepts, relations, risks, open_qs):
+def section_defects(concepts, relations, risks, open_qs, format_warnings):
     # only ids that are actually usable; missing/empty ones are reported separately
     # (concepts_no_id below) instead of polluting orphan/dangling/duplicate output.
     ids = {c.get("id") for c in concepts if str(c.get("id") or "").strip()}
     referenced = set()
     dangling = []
+    incomplete_rels = []
     for r in relations:
         for end in ("from", "to"):
             ref = r.get(end)
             if ref is None:
+                # `from`/`to` missing entirely: the relation appears in neither
+                # the graph nor dangling output, so flag it instead of skipping.
+                incomplete_rels.append((r, end))
                 continue
             referenced.add(ref)
             if ref not in ids:
@@ -180,11 +189,10 @@ def section_defects(concepts, relations, risks, open_qs):
 
     # duplicate concept ids: same authoring-mistake class as orphans/dangling.
     # (ids were coerced to a hashable form upstream in build_report.)
-    all_ids = [c.get("id") for c in concepts if str(c.get("id") or "").strip()]
-    dup_ids = []
-    for i in all_ids:
-        if all_ids.count(i) > 1 and i not in dup_ids:
-            dup_ids.append(i)
+    id_counts = Counter(
+        c.get("id") for c in concepts if str(c.get("id") or "").strip()
+    )
+    dup_ids = [i for i, n in id_counts.items() if n > 1]
 
     # concepts with no usable id: schema requires id (必須/一意), and without one
     # the concept is unreferenceable and silently drops out of graph/orphan/dangling
@@ -194,6 +202,15 @@ def section_defects(concepts, relations, risks, open_qs):
     lines = ["## 要確認", ""]
     any_defect = False
 
+    # Input-format problems (non-mapping list elements, wrong/missing version)
+    # collected upstream. These must reach the report and --strict, otherwise a
+    # malformed scaffold renders as "no defects" -- the opposite of this tool's job.
+    if format_warnings:
+        any_defect = True
+        lines.append("**入力フォーマットの問題** — スキーマに沿わない箇所です（スキップ済み・結果が不正確になりえます）:")
+        for w in format_warnings:
+            lines.append(f"- {_md_cell(w)}")
+        lines.append("")
     if concepts_no_id:
         any_defect = True
         lines.append("**id 未設定の concept** — id が無い/空で、参照も検出もできません:")
@@ -212,6 +229,13 @@ def section_defects(concepts, relations, risks, open_qs):
         lines.append("**参照切れ relations** — 存在しない concept id を指しています:")
         for frm, to, end, ref in dangling:
             lines.append(f"- `{frm} -> {to}` の `{end}: {ref}` は未定義")
+        lines.append("")
+    if incomplete_rels:
+        any_defect = True
+        lines.append("**不完全な relation** — `from` または `to` が未設定です:")
+        for r, end in incomplete_rels:
+            other = "to" if end == "from" else "from"
+            lines.append(f"- `{end}` 欠落（`{other}: {_md_cell(r.get(other, '?'))}`）")
         lines.append("")
     if orphans:
         any_defect = True
@@ -309,37 +333,52 @@ def section_synthesis(syn):
 
 # --- main ------------------------------------------------------------------
 
-def _mappings(items, kind):
-    """Keep only mapping elements; warn on anything else.
+def _mappings(items, kind, warnings):
+    """Keep only mapping elements; record + warn on anything else.
 
     YAML can parse fine yet hand us a list whose elements are scalars (e.g.
     ``concepts: [- rate-limit]``). Every consumer calls ``.get`` on the element,
     so a non-mapping would crash the very tool meant to flag structural defects.
-    We surface a warning and skip it rather than blow up with a traceback.
+    We collect the problem into ``warnings`` (so it reaches the report and
+    --strict) and skip it rather than blow up with a traceback. ``warnings`` is
+    passed in by the caller -- no module global -- so each run starts clean.
     """
     out = []
     for idx, item in enumerate(items):
         if isinstance(item, dict):
             out.append(item)
         else:
-            sys.stderr.write(
-                f"warning: {kind}[{idx}] is not a mapping "
-                f"({type(item).__name__}); skipped\n"
-            )
+            msg = f"{kind}[{idx}] が mapping ではありません（{type(item).__name__}）"
+            warnings.append(msg)
+            sys.stderr.write(f"warning: {msg}; skipped\n")
     return out
 
 
 def build_report(doc):
-    concepts = _mappings(_as_list(doc, "concepts"), "concepts")
-    relations = _mappings(_as_list(doc, "relations"), "relations")
-    risks = _mappings(_as_list(doc, "risks"), "risks")
-    open_qs = _mappings(_as_list(doc, "open_questions"), "open_questions")
+    # Input-format problems collected here and threaded into section_defects so
+    # they surface in the report and gate --strict (not just stderr).
+    format_warnings = []
+
+    version = doc.get("version")
+    if version is None:
+        format_warnings.append(
+            f"`version` が未設定です（`{EXPECTED_VERSION}` を期待）"
+        )
+    elif str(version) != EXPECTED_VERSION:
+        format_warnings.append(
+            f"`version: {_md_cell(version)}` は未対応です"
+            f"（`{EXPECTED_VERSION}` を期待・別スキーマ/誤記の可能性）"
+        )
+
+    concepts = _mappings(_as_list(doc, "concepts"), "concepts", format_warnings)
+    relations = _mappings(_as_list(doc, "relations"), "relations", format_warnings)
+    risks = _mappings(_as_list(doc, "risks"), "risks", format_warnings)
+    open_qs = _mappings(_as_list(doc, "open_questions"), "open_questions", format_warnings)
     synthesis = doc.get("synthesis") or {}
     if not isinstance(synthesis, dict):
-        sys.stderr.write(
-            f"warning: 'synthesis' is not a mapping "
-            f"({type(synthesis).__name__}); ignored\n"
-        )
+        msg = f"`synthesis` が mapping ではありません（{type(synthesis).__name__}）"
+        format_warnings.append(msg)
+        sys.stderr.write(f"warning: {msg}; ignored\n")
         synthesis = {}
 
     # Coerce non-hashable ids (a YAML typo like `id: [a, b]`) to strings, here at
@@ -354,7 +393,9 @@ def build_report(doc):
                 r[end] = str(r.get(end))
 
     parts = [section_overview(doc)]
-    defects_md, any_defect = section_defects(concepts, relations, risks, open_qs)
+    defects_md, any_defect = section_defects(
+        concepts, relations, risks, open_qs, format_warnings
+    )
     parts.append(defects_md)
     if concepts:
         parts.append(section_graph(concepts, relations))
