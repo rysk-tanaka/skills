@@ -130,6 +130,10 @@ def section_overview(doc):
 def section_graph(concepts, relations):
     """Mermaid graph of relations between concepts."""
     label_of = {c.get("id"): c.get("label", c.get("id")) for c in concepts}
+    # Same usable-id set as section_defects, so the graph only ever draws nodes
+    # that are declared concepts. Without this, a dangling edge target becomes a
+    # phantom Mermaid node whose sanitized label diverges from the 参照切れ report.
+    ids = {c.get("id") for c in concepts if str(c.get("id") or "").strip()}
     node_ids = {}  # original concept id -> Mermaid-safe node id
     lines = ["## 関係グラフ", "", "```mermaid", "graph LR"]
     # declare nodes (so isolated concepts still show up)
@@ -148,6 +152,8 @@ def section_graph(concepts, relations):
         frm, to = r.get("from"), r.get("to")
         if frm is None or to is None:
             continue
+        if frm not in ids or to not in ids:
+            continue  # dangling refs are reported in section_defects; skip here
         frm_node = _safe_node_id(frm, node_ids)
         to_node = _safe_node_id(to, node_ids)
         rlabel = r.get("label") or r.get("type") or ""
