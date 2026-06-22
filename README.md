@@ -27,6 +27,7 @@ gh skill install rysk-tanaka/skills auto-commit --agent claude-code --scope user
 | `drawio` | project | `.drawio` 図表を生成、PNG / SVG / PDF へエクスポート可 |
 | `drawio-aws` | project | `drawio` 経由で AWS 4 アイコンセットを使った AWS アーキテクチャ図を生成 |
 | `cloudwatch-logs` | project | CloudWatch Logs の取得・検索(Lambda ログ解析、エラー調査) |
+| `design-doc-yaml` | user | 設計内容をYAMLに集約し、診断レビューを経て肥大化しないMarkdown設計書を作成 |
 
 「推奨 scope」は `gh skill install --scope <user|project>` の指針で、frontmatter `description` の `(user)` suffix と対応。user scope はどのリポジトリでも常用したい汎用 skill (git / PR / CI 系)、project scope は特定プロジェクトに紐付く domain 固有 skill (AWS, draw.io 等) を想定。あくまで推奨で、好みで上書き可能。
 
@@ -42,6 +43,7 @@ skill 別の外部依存。
 - `codex-review`: Codex CLI (`codex`)
 - `drawio`, `drawio-aws`: draw.io デスクトップアプリ
 - `cloudwatch-logs`: `uv`, AWS 認証情報
+- `design-doc-yaml`: `uv`
 
 ## 権限
 
