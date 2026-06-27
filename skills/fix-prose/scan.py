@@ -47,6 +47,13 @@ SKIP_EXTS = {
 }
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".tmp"}
 
+# Accepted --profile values (also constrains rules.toml's default_profile).
+VALID_PROFILES = {"technical", "docs", "strict"}
+
+# Skip text files larger than this to avoid loading huge logs / generated files
+# into memory (binaries are already excluded via SKIP_EXTS).
+MAX_FILE_BYTES = 2 * 1024 * 1024
+
 EN_WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
 
 
@@ -190,8 +197,13 @@ def load_rules(rules_path: Path) -> Rules:
 
 
 def strip_md_code(text: str) -> str:
-    """Blank out fenced and inline code so we don't flag code identifiers."""
-    text = re.sub(r"```.*?```", lambda m: "\n" * m.group(0).count("\n"), text, flags=re.DOTALL)
+    """Blank out fenced and inline code so we don't flag code identifiers.
+
+    Handles ``` and ~~~ fences of 3+ markers, including a fence left unclosed
+    at end of file. Newlines are preserved so line numbers stay aligned.
+    """
+    fence = r"(?:`{3,}|~{3,}).*?(?:`{3,}|~{3,}|\Z)"
+    text = re.sub(fence, lambda m: "\n" * m.group(0).count("\n"), text, flags=re.DOTALL)
     text = re.sub(r"`[^`\n]*`", " ", text)
     return text
 
@@ -206,6 +218,8 @@ def extract_prose(path: Path) -> tuple[list[ProseLine], str | None]:
         return [], f"skipped extension {skip_ext}"
 
     try:
+        if path.stat().st_size > MAX_FILE_BYTES:
+            return [], f"skipped: too large (> {MAX_FILE_BYTES // 1024} KB)"
         raw = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return [], "undecodable as UTF-8 (re-save as UTF-8 to scan)"
@@ -312,11 +326,11 @@ def scan_prose(
         full = ""
 
     # English density
-    en_total = len(EN_WORD.findall(full))
+    en_total = sum(1 for _ in EN_WORD.finditer(full))
     if en_total and rules.en_density_words:
         counts: dict[str, int] = {}
         for w in rules.en_density_words:
-            c = len(rules.en_patterns[w].findall(full))
+            c = sum(1 for _ in rules.en_patterns[w].finditer(full))
             if c:
                 counts[w] = c
         hit = sum(counts.values())
@@ -356,16 +370,24 @@ def scan_prose(
 # =============================================================================
 
 
-def discover(paths: list[Path]) -> list[Path]:
+def discover(paths: list[Path]) -> tuple[list[Path], list[Path]]:
+    """Return (files, missing). Prunes SKIP_DIRS during the walk so we never
+    descend into .git / node_modules / etc. Nonexistent inputs go into
+    `missing` so the caller can surface a typo instead of scanning nothing."""
     out: list[Path] = []
+    missing: list[Path] = []
     for p in paths:
         if p.is_dir():
-            for child in sorted(p.rglob("*")):
-                if child.is_file() and not (SKIP_DIRS & set(child.parts)):
-                    out.append(child)
+            found: list[Path] = []
+            for root, dirs, files in p.walk(top_down=True):
+                dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+                found.extend(root / name for name in files)
+            out.extend(sorted(found))
         elif p.is_file():
             out.append(p)
-    return out
+        else:
+            missing.append(p)
+    return out, missing
 
 
 # =============================================================================
@@ -392,13 +414,21 @@ def main(
         raise typer.Exit(1) from None
 
     active_profile = profile or rules.default_profile
+    if active_profile not in VALID_PROFILES:
+        print(
+            f"Error: invalid profile '{active_profile}'. "
+            f"Use one of: {', '.join(sorted(VALID_PROFILES))}",
+            file=sys.stderr)
+        raise typer.Exit(1)
+
+    files, missing = discover(paths)
 
     all_findings: list[Finding] = []
     all_density: list[dict] = []
-    skipped: list[dict] = []
+    skipped: list[dict] = [{"path": str(p), "reason": "path not found"} for p in missing]
     scanned = 0
 
-    for fp in discover(paths):
+    for fp in files:
         prose, reason = extract_prose(fp)
         if reason:
             skipped.append({"path": str(fp), "reason": reason})
