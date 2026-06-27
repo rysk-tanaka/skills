@@ -107,7 +107,7 @@ fi
 dim_migrations=$(has '(^|/)migrations?/|alembic|\.sql$|schema\.' "${names_lc}")
 dim_security=$(has '(^|[^[:alnum:]_])(authn?|token|crypto|hmac|eval|sql)([^[:alnum:]_]|$)|authenticat|authoriz|oauth|secret|password|passwd|jwt|subprocess|os\.system|\.execute\(' "${added_lc}")
 # concurrency stays case-sensitive: patterns like Thread(/Lock(/Semaphore are capitalized.
-dim_concurrency=$(has '(^|[^[:alnum:]_])(async|await|asyncio|threading|goroutine|mutex|Semaphore|Thread\(|Lock\(|RLock\()|go func' "${added}")
+dim_concurrency=$(has '(^|[^[:alnum:]_])(async|await|asyncio|threading|goroutine|mutex|Semaphore)([^[:alnum:]_]|$)|(^|[^[:alnum:]_])(Thread|Lock|RLock)\(|go func' "${added}")
 
 # Tier classification.
 has_risk=false
