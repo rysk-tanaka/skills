@@ -1,0 +1,140 @@
+# =============================================================================
+# fix-prose 辞書ファイル
+#
+# コードコメント / ドキュメントの「直したい語彙・言い回し」を宣言する。
+# scan.py がこのファイルを読み、対象ファイルから該当箇所を検出する。
+# 実際の書き換えは Claude が SKILL.md の手順に従って行う。
+#
+# 言語ごと (en / ja) × ティアごと (always / contextual / density) に定義する。
+#   - always     : 文脈不問で直す（出たら必ず指摘）
+#   - contextual : 文脈次第。技術的に正当な用法は許容（allow_in で制御）
+#   - density    : 単独では正当。多用 / 共起したときだけ指摘
+#
+# 「随時ワードを追加する」場合は、該当セクションに 1 行足すだけでよい。
+# 末尾の「追加方法」も参照。
+# =============================================================================
+
+[meta]
+# active profile に応じて contextual 語の許容範囲が変わる（--profile で指定）。
+# technical = コード/技術文書向け（contextual 語に寛容）
+# docs      = 一般ドキュメント向け
+# strict    = 厳格（contextual もすべて指摘）
+default_profile = "technical"
+
+
+# =============================================================================
+# English
+# =============================================================================
+
+# --- always: 文脈不問で直す（AI らしさの強いマーカー） -----------------------
+# 形式:  "base" = ["置換候補1", "置換候補2", ...]
+# 活用形（-s/-ed/-ing 等）は scan.py が自動で拾う。
+[en.always]
+delve = ["look into", "go into", "examine"]
+embark = ["start", "begin"]
+"shed light on" = ["clarify", "explain"]
+"pave the way" = ["enable", "lead to"]
+"dive into" = ["look at", "go into"]
+underscore = ["highlight", "show"]
+bolster = ["strengthen", "support"]
+testament = ["sign", "proof"]
+"game-changer" = ["major change", "big shift"]
+tapestry = ["mix", "range"]
+realm = ["area", "field"]
+"first and foremost" = ["first"]
+
+# --- contextual: 技術文脈では許容。それ以外では直す --------------------------
+# 形式:  base = { suggest = [...], allow_in = ["technical", ...], note = "..." }
+# allow_in に active profile が含まれれば「許容（info 扱い）」、含まれなければ指摘。
+[en.contextual]
+robust = { suggest = ["reliable", "solid", "stable"], allow_in = ["technical"], note = "システム/型の頑健性など技術的意味なら許容" }
+comprehensive = { suggest = ["complete", "full", "thorough"], allow_in = ["technical"], note = "網羅性を実際に指す場合は許容" }
+seamless = { suggest = ["smooth", "direct"], allow_in = ["technical"], note = "空虚な賛辞なら直す" }
+leverage = { suggest = ["use", "apply"], allow_in = ["technical"], note = "実際の API/プラットフォーム活用の意味なら許容" }
+facilitate = { suggest = ["help", "ease"], allow_in = ["technical"], note = "" }
+streamline = { suggest = ["simplify", "speed up"], allow_in = ["technical"], note = "" }
+ecosystem = { suggest = ["set of tools", "stack"], allow_in = ["technical"], note = "" }
+utilize = { suggest = ["use"], allow_in = [], note = "ほぼ常に use で足りる" }
+
+# --- density: 多用 / 共起したときだけ指摘 ------------------------------------
+# threshold = 散文中の総語数に対する density 語の合計割合（これを超えたら指摘）
+# 同一段落に 2 語以上同居した場合も指摘対象にする。
+[en.density]
+threshold = 0.03
+words = [
+  "comprehensive",
+  "seamless",
+  "robust",
+  "leverage",
+  "facilitate",
+  "intricate",
+  "nuanced",
+  "holistic",
+  "vibrant",
+]
+
+# --- pattern: 構造・ジャーゴンの正規表現。検出のみ、書き換えは note に従う ---
+# 日本語に埋め込まれた英単語は単語境界が効かないため、語ではなく regex で捕まえる。
+[en.pattern]
+in_flight = { regex = '(?i)in[-\s]?flight', suggest = ["処理が完了する前にメッセージが再配信される", "処理の完了前に再配信される"], note = "ジャーゴン。『in-flight 再配信』等は『処理が完了する前にメッセージが再配信される』のように平易な日本語へ言い換える。文に馴染む形を選ぶ。コード識別子や API 名の一部なら残す" }
+phantom_dependency = { regex = '(?i)phantom[-\s]?dep[a-z]*', suggest = ["package.json に宣言されていない依存", "宣言されていない依存"], note = "ジャーゴン。『package.json に宣言されていない依存に依存している』のように開いて説明する" }
+hoist = { regex = '(?i)hoist[a-z]*', suggest = ["最上位にまとめて展開する", "node_modules の最上位に巻き上げる"], note = "依存の hoisting を指す場合は『依存を node_modules の最上位にまとめて展開する』のように開く。物を持ち上げる一般的な意味なら残す" }
+
+
+# =============================================================================
+# Japanese
+# =============================================================================
+# 日本語は語境界が曖昧なため部分一致で判定する。
+# キー先頭の "〜" はワイルドカード（直前の文を表す表示用記号）として扱い、
+# マッチ時には "〜" を除いた残りを部分一致検索する。
+
+# --- always: 文脈不問で直す --------------------------------------------------
+[ja.always]
+"させていただく" = ["する", "します"]
+"ご確認のほど、よろしくお願いいたします" = ["ご確認をお願いします"]
+"〜することが重要です" = ["〜してください", "〜する必要があります"]
+"まず初めに" = ["まず", "最初に"]
+"〜という形になります" = ["〜です"]
+
+# --- contextual: ヘッジ / 冗長。断定できる場面では言い切る -------------------
+[ja.contextual]
+"〜と思われます" = { suggest = ["〜です", "〜だと考えます"], allow_in = [], note = "根拠があるなら言い切る" }
+"〜になります" = { suggest = ["〜です"], allow_in = [], note = "冗長な体言止め・婉曲（『〜という形になります』的な箇所）は直す。『〜することになります』『お世話になります』など確定・経緯・慣用の用法は残す" }
+"〜と考えられます" = { suggest = ["〜です", "〜だと考えます"], allow_in = [], note = "ヘッジ" }
+"〜することができます" = { suggest = ["〜できます"], allow_in = [], note = "冗長" }
+"行うことができます" = { suggest = ["できます"], allow_in = [], note = "冗長" }
+"なのに" = { suggest = ["で", "の一方で", "に対して"], allow_in = [], note = "対比の『なのに』は指摘・非難めいた響き。AとBの矛盾を中立に示す場面では『Aで、Bになっており』のような並列対比へ再構成する（単純置換ではない）。事実として逆接が自然な箇所はそのまま" }
+"直上" = { suggest = ["上回る", "わずかに上回る", "のすぐ上"], allow_in = [], note = "位置の比喩。閾値や数値の『すぐ上』を指す場合は『〜を上回る』『〜をわずかに上回る』へ言い換える。物理的に直上の層・要素を指す正当な用法は残す" }
+
+# --- density: 接続詞などの多用検知（共起ベースのみ） ------------------------
+# 日本語は語数カウントが不安定なため比率判定は行わず、共起（同一段落に 2 語以上
+# 同居）だけで検知する。このため threshold は持たない。
+[ja.density]
+words = [
+  "さて",
+  "このように",
+  "以上のことから",
+  "すなわち",
+]
+
+# --- pattern: 構造パターン（正規表現）。検出のみ、書き換えは note に従い再構成 ---
+# 形式:  id = { regex = "...", suggest = [...], note = "..." }
+# 特定の語ではなく「形」を捕まえたいとき（全角括弧の補足、後付けの逆接 等）に使う。
+[ja.pattern]
+zenkaku_aside = { regex = "（[^（）]{1,60}）", suggest = [], note = "全角括弧の補足。後付けの理由・限定・言い換えに見える箇所は本文へ展開する（例: 『X（理由のため）』→『理由のためX』、『Gal（平均値減算済み）』→『平均値減算済みの Gal』）。用語の初出注記やスコープ表記など短く独立した注は残す" }
+
+
+# =============================================================================
+# 追加方法（コード実装中に随時ここへ足す）
+# =============================================================================
+# 1. 常に直したい語           → [en.always] / [ja.always] に  "語" = ["置換候補"]
+# 2. 技術文脈だけ許したい語    → [en.contextual] / [ja.contextual] に
+#                                語 = { suggest = ["置換候補"], allow_in = ["technical"], note = "" }
+# 3. 多用だけ抑えたい語        → [en.density] / [ja.density] の words に追記
+# 4. 「形」で捕まえたい構造     → [en.pattern] / [ja.pattern] に
+#                                id = { regex = "...", suggest = [], note = "再構成の指針" }
+#
+# 例) 「を実施する」を「をする」に寄せたい:
+#   [ja.always] に  "を実施する" = ["をする", "を行う"]
+#
+# scan.py は再起動不要。次回実行時に反映される。
