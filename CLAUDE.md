@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `rysk-tanaka/skills` — Claude Code 向け個人 Agent Skills 集([agentskills.io specification](https://agentskills.io/specification) 準拠)。配布チャネルは `gh skill install rysk-tanaka/skills <name> --agent claude-code`。
 
-ユーザー向け README / 各 `SKILL.md` 本文は日本語、frontmatter / shell script / Python はすべて英語。
+ユーザー向け README / 各 `SKILL.md` 本文、および frontmatter の `description`(skill 一覧に表示される user-facing なフィールド)は日本語。それ以外の frontmatter フィールド(`name` / `license` / `argument-hint` / `allowed-tools`) / shell script / Python はすべて英語。
 
 ## レイアウト
 
@@ -36,7 +36,7 @@ rysk の dotfiles では `mise run setup-skills` が `~/Repositories/rysk/skills
 ```yaml
 ---
 name: <skill-name>
-description: <description>
+description: <description>                # user-facing、日本語可(skill 一覧に表示)
 license: MIT
 argument-hint: "<args>"                # 必ず quote
 allowed-tools: Bash(bash *) BashOutput # space-delimited、command 名ベース
