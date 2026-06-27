@@ -98,10 +98,10 @@ dim_error=$(has '\b(try|except|catch|finally|raise|throw)\b|rescue ' "${added}")
 if grep -qE '\.mdx?$|\.rst$' <<<"${names_lc}"; then
     dim_comments=true
 else
-    dim_comments=$(has '^\+\s*(#|//|/\*|\*|"""|'"'''"')' "${added}")
+    dim_comments=$(has '^\+[[:space:]]*(#|//|/\*|\*|"""|'"'''"')' "${added}")
 fi
 dim_migrations=$(has '(^|/)migrations?/|alembic|\.sql$|schema\.' "${names_lc}")
-dim_security=$(has '\bauthn?\b|authenticat|authoriz|oauth|\btoken\b|secret|password|passwd|jwt|crypto|hmac|\beval\b|subprocess|os\.system|\.execute\(|\bsql\b' "${added_lc}")
+dim_security=$(has '\bauthn?\b|authenticat|authoriz|oauth|\btoken\b|secret|password|passwd|jwt|\bcrypto\b|\bhmac\b|\beval\b|subprocess|os\.system|\.execute\(|\bsql\b' "${added_lc}")
 # concurrency stays case-sensitive: patterns like Thread(/Lock(/Semaphore are capitalized.
 dim_concurrency=$(has '\b(async|await|asyncio|threading|Thread\(|goroutine|go func|mutex|Lock\(|RLock\(|Semaphore)' "${added}")
 

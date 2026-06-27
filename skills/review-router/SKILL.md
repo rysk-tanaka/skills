@@ -88,8 +88,8 @@ JSON の構造。
 coderabbit review --agent -t all --base <base>
 ```
 
-- `<base>` は JSON の `base` を使う
-- `coderabbit` CLI が無い、または未認証の場合は skip し、その旨を報告する（インストールは <https://www.coderabbit.ai/cli>）
+- `<base>` は JSON の `base` を使う（`origin/main` 等の remote-tracking ref に解決されている場合もそのまま渡す）
+- `coderabbit` CLI が無い・未認証、または非ゼロ終了した場合（`base` が remote-tracking ref で受け付けられない等）は skip し、その旨を報告する。失敗はフロー全体を止めない（インストールは <https://www.coderabbit.ai/cli>）
 
 ## 4. 結果の集約
 
