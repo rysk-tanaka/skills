@@ -131,10 +131,12 @@ def expand_en_variants(base: str) -> re.Pattern[str]:
         joined = r"[ \-]+".join(re.escape(p) for p in parts)
         return re.compile(rf"\b{joined}\b", re.IGNORECASE)
 
-    forms = {base, base + "s", base + "es", base + "ed", base + "ing", base + "ly"}
+    forms = {base, base + "s", base + "es", base + "ly"}
     if base.endswith("e"):
-        stem = base[:-1]
-        forms |= {stem + "ed", stem + "ing"}
+        # drop the silent 'e' before -ed/-ing (leverage -> leveraged, not leverageed)
+        forms |= {base[:-1] + "ed", base[:-1] + "ing"}
+    else:
+        forms |= {base + "ed", base + "ing"}
     if base.endswith("y"):
         forms.add(base[:-1] + "ies")
     alts = "|".join(sorted((re.escape(f) for f in forms), key=len, reverse=True))
@@ -196,14 +198,21 @@ def load_rules(rules_path: Path) -> Rules:
 # =============================================================================
 
 
+def _blank_keep_newlines(match: re.Match[str]) -> str:
+    """Replace a span with spaces but keep its newlines, so line numbers and
+    paragraph breaks downstream stay aligned with the original text."""
+    return re.sub(r"[^\n]", " ", match.group(0))
+
+
 def strip_md_code(text: str) -> str:
     """Blank out fenced and inline code so we don't flag code identifiers.
 
-    Handles ``` and ~~~ fences of 3+ markers, including a fence left unclosed
-    at end of file. Newlines are preserved so line numbers stay aligned.
+    A fence (``` or ~~~, 3+ markers) is closed only by the same marker run, so a
+    ``` block containing ~~~ is not cut short; an unclosed fence runs to EOF.
+    Newlines are preserved so line numbers stay aligned.
     """
-    fence = r"(?:`{3,}|~{3,}).*?(?:`{3,}|~{3,}|\Z)"
-    text = re.sub(fence, lambda m: "\n" * m.group(0).count("\n"), text, flags=re.DOTALL)
+    fence = re.compile(r"(?P<fence>`{3,}|~{3,}).*?(?:(?P=fence)|\Z)", re.DOTALL)
+    text = fence.sub(_blank_keep_newlines, text)
     text = re.sub(r"`[^`\n]*`", " ", text)
     return text
 
