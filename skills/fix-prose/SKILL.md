@@ -3,7 +3,7 @@ name: fix-prose
 description: コードコメント・ドキュメント内の語彙や言い回しを辞書ルールに従って自動で直す (user)
 license: MIT
 argument-hint: "[path...] [--profile <technical|docs|strict>]"
-allowed-tools: Bash(uv *) Edit
+allowed-tools: Bash(uv run *) Edit
 ---
 
 # 語彙・言い回しの自動修正

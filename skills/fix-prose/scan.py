@@ -131,14 +131,17 @@ def expand_en_variants(base: str) -> re.Pattern[str]:
         joined = r"[ \-]+".join(re.escape(p) for p in parts)
         return re.compile(rf"\b{joined}\b", re.IGNORECASE)
 
-    forms = {base, base + "s", base + "es", base + "ly"}
+    # Inflect per ending so we only generate real forms (no "leveragees" / "embarkes").
+    # "ly" is kept for adjective->adverb (seamless -> seamlessly).
+    forms = {base, base + "ly"}
     if base.endswith("e"):
-        # drop the silent 'e' before -ed/-ing (leverage -> leveraged, not leverageed)
-        forms |= {base[:-1] + "ed", base[:-1] + "ing"}
+        forms |= {base + "s", base[:-1] + "ed", base[:-1] + "ing"}
+    elif base.endswith("y") and len(base) > 1 and base[-2] not in "aeiou":
+        forms |= {base[:-1] + "ies", base[:-1] + "ied", base + "ing"}
     else:
-        forms |= {base + "ed", base + "ing"}
-    if base.endswith("y"):
-        forms.add(base[:-1] + "ies")
+        forms |= {base + "s", base + "ed", base + "ing"}
+        if base.endswith(("s", "x", "z", "ch", "sh")):
+            forms.add(base + "es")
     alts = "|".join(sorted((re.escape(f) for f in forms), key=len, reverse=True))
     return re.compile(rf"\b(?:{alts})\b", re.IGNORECASE)
 
@@ -396,7 +399,18 @@ def discover(paths: list[Path]) -> tuple[list[Path], list[Path]]:
             out.append(p)
         else:
             missing.append(p)
-    return out, missing
+
+    # Dedup by canonical path so overlapping inputs (e.g. `.` and `docs/`) don't
+    # scan the same file twice and inflate the counts. Keep the first-seen path
+    # for display so output stays relative to what the user passed.
+    seen: set[Path] = set()
+    deduped: list[Path] = []
+    for f in out:
+        key = f.resolve()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(f)
+    return deduped, missing
 
 
 # =============================================================================
