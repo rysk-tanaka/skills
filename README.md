@@ -32,7 +32,7 @@ gh skill install rysk-tanaka/skills auto-commit --agent claude-code --scope user
 
 「推奨 scope」は `gh skill install --scope <user|project>` の指針で、frontmatter `description` の `(user)` suffix と対応。user scope はどのリポジトリでも常用したい汎用 skill (git / PR / CI 系)、project scope は特定プロジェクトに紐付く domain 固有 skill (AWS, draw.io 等) を想定。あくまで推奨で、好みで上書き可能。
 
-各 skill の `SKILL.md` 本文はほとんど日本語で記述されています(作者が日本人のため)。コード、frontmatter、helper script は英語です。
+各 skill の `SKILL.md` 本文と frontmatter の `description`(skill 一覧に表示される user-facing フィールド)はほとんど日本語で記述されています(作者が日本人のため)。コード、helper script、および `description` 以外の frontmatter フィールドは英語です。
 
 ## 互換性
 
