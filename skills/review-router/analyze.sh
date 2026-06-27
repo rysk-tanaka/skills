@@ -16,8 +16,15 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! git rev-parse --verify --quiet "${BASE_BRANCH}" >/dev/null; then
-    echo "ERROR: base ref '${BASE_BRANCH}' not found" >&2
+# Resolve the base to a real ref. Fall back to origin/<base> so a checkout that
+# only has the remote-tracking branch (e.g. fresh clone, no local main) still works.
+RESOLVED_BASE="${BASE_BRANCH}"
+if git rev-parse --verify --quiet "${RESOLVED_BASE}" >/dev/null; then
+    :
+elif git rev-parse --verify --quiet "origin/${BASE_BRANCH}" >/dev/null; then
+    RESOLVED_BASE="origin/${BASE_BRANCH}"
+else
+    echo "ERROR: base ref '${BASE_BRANCH}' not found (also tried 'origin/${BASE_BRANCH}')" >&2
     exit 1
 fi
 
@@ -25,7 +32,7 @@ WORK_DIR=$(mktemp -d)
 trap 'rm -rf "${WORK_DIR}"' EXIT
 
 # Use three-dot range so we compare against the merge-base (changes on this branch only).
-RANGE="${BASE_BRANCH}...HEAD"
+RANGE="${RESOLVED_BASE}...HEAD"
 
 # A real diff failure here (no merge base, unborn HEAD, corrupt object) must abort
 # loudly. Masking it with `2>/dev/null || true` would feed empty files downstream
@@ -94,9 +101,9 @@ else
     dim_comments=$(has '^\+\s*(#|//|/\*|\*|"""|'"'''"')' "${added}")
 fi
 dim_migrations=$(has '(^|/)migrations?/|alembic|\.sql$|schema\.' "${names_lc}")
-dim_security=$(has 'auth|token|secret|password|passwd|jwt|crypto|hmac|\beval\b|subprocess|os\.system|\.execute\(|sql' "${added_lc}")
+dim_security=$(has '\bauthn?\b|authenticat|authoriz|oauth|\btoken\b|secret|password|passwd|jwt|crypto|hmac|\beval\b|subprocess|os\.system|\.execute\(|\bsql\b' "${added_lc}")
 # concurrency stays case-sensitive: patterns like Thread(/Lock(/Semaphore are capitalized.
-dim_concurrency=$(has '\b(async|await|asyncio|threading|Thread\(|goroutine|go func|mutex|Lock\(|RLock\(|Semaphore)\b' "${added}")
+dim_concurrency=$(has '\b(async|await|asyncio|threading|Thread\(|goroutine|go func|mutex|Lock\(|RLock\(|Semaphore)' "${added}")
 
 # Tier classification.
 has_risk=false
@@ -113,7 +120,7 @@ else
 fi
 
 jq -n \
-    --arg base "${BASE_BRANCH}" \
+    --arg base "${RESOLVED_BASE}" \
     --argjson files "${files_changed}" \
     --argjson ins "${insertions}" \
     --argjson del "${deletions}" \

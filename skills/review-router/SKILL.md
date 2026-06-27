@@ -3,7 +3,7 @@ name: review-router
 description: 差分を分析して規模・観点に応じたレビューを自動振り分け (user)
 license: MIT
 argument-hint: "[base-branch]"
-allowed-tools: Bash(bash *) Bash(coderabbit:*) BashOutput Task
+allowed-tools: Bash(bash *) Bash(coderabbit *) BashOutput Task
 ---
 
 # レビュー・ルーター
