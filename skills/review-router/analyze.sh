@@ -3,6 +3,16 @@
 # Emits a single JSON object on stdout describing size, touched dimensions, and tier.
 set -euo pipefail
 
+# The dimension patterns below rely on the \b / \s regex extensions. GNU grep
+# (and the GNU-compatible BSD grep shipped with current macOS) handles them, but
+# a strict POSIX grep treats \b as a backspace and silently breaks detection.
+# Prefer GNU grep (ggrep) when present so the skill stays portable.
+if command -v ggrep >/dev/null 2>&1; then
+    GREP=ggrep
+else
+    GREP=grep
+fi
+
 # Tunable thresholds. Adjust here to change routing aggressiveness.
 HIGH_CHURN=400      # insertions+deletions above this => high tier
 HIGH_FILES=15       # files changed above this => high tier
@@ -45,7 +55,7 @@ git diff --name-only "${RANGE}" >"${WORK_DIR}/names"
 # Patch text (added/removed lines) for content-based dimension detection.
 git diff "${RANGE}" >"${WORK_DIR}/patch"
 
-files_changed=$(grep -c . "${WORK_DIR}/names" || true)
+files_changed=$("${GREP}" -c . "${WORK_DIR}/names" || true)
 files_changed=${files_changed:-0}
 
 # Sum insertions/deletions from numstat, skipping binary files ('-' columns).
@@ -69,14 +79,14 @@ languages=$(awk -F/ '
 
 names_lc=$(tr '[:upper:]' '[:lower:]' <"${WORK_DIR}/names")
 # Only added/changed content lines (leading '+', excluding the '+++' file header).
-added=$(grep -E '^\+' "${WORK_DIR}/patch" | grep -vE '^\+\+\+' || true)
+added=$("${GREP}" -E '^\+' "${WORK_DIR}/patch" | "${GREP}" -vE '^\+\+\+' || true)
 added_lc=$(tr '[:upper:]' '[:lower:]' <<<"${added}")
 
 # Pattern presence test via here-string, NOT a pipe: under `set -euo pipefail`
 # a piped `grep -q` exits at the first match and SIGPIPEs the upstream writer,
 # which aborts the whole script on large (high-tier) diffs before any JSON.
 has() {
-    if grep -qE "$1" <<<"$2"; then
+    if "${GREP}" -qE "$1" <<<"$2"; then
         echo true
     else
         local rc=$?
@@ -88,14 +98,14 @@ has() {
 }
 
 dim_tests=$(has '(^|/)tests?/|(^|/)test_|_test\.|\.test\.|\.spec\.|_spec\.' "${names_lc}")
-if grep -qE '\.pyi$|\.d\.ts$' <<<"${names_lc}"; then
+if "${GREP}" -qE '\.pyi$|\.d\.ts$' <<<"${names_lc}"; then
     dim_types=true
 else
     # case-insensitive (added_lc) so Python TypedDict/Protocol/Enum still match.
     dim_types=$(has '\b(interface|type |typeddict|protocol|@dataclass|enum )' "${added_lc}")
 fi
 dim_error=$(has '\b(try|except|catch|finally|raise|throw)\b|rescue ' "${added}")
-if grep -qE '\.mdx?$|\.rst$' <<<"${names_lc}"; then
+if "${GREP}" -qE '\.mdx?$|\.rst$' <<<"${names_lc}"; then
     dim_comments=true
 else
     dim_comments=$(has '^\+[[:space:]]*(#|//|/\*|\*|"""|'"'''"')' "${added}")
