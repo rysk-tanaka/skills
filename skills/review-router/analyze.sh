@@ -3,16 +3,6 @@
 # Emits a single JSON object on stdout describing size, touched dimensions, and tier.
 set -euo pipefail
 
-# The dimension patterns below rely on the \b / \s regex extensions. GNU grep
-# (and the GNU-compatible BSD grep shipped with current macOS) handles them, but
-# a strict POSIX grep treats \b as a backspace and silently breaks detection.
-# Prefer GNU grep (ggrep) when present so the skill stays portable.
-if command -v ggrep >/dev/null 2>&1; then
-    GREP=ggrep
-else
-    GREP=grep
-fi
-
 # Tunable thresholds. Adjust here to change routing aggressiveness.
 HIGH_CHURN=400      # insertions+deletions above this => high tier
 HIGH_FILES=15       # files changed above this => high tier
@@ -55,8 +45,9 @@ git diff --name-only "${RANGE}" >"${WORK_DIR}/names"
 # Patch text (added/removed lines) for content-based dimension detection.
 git diff "${RANGE}" >"${WORK_DIR}/patch"
 
-files_changed=$("${GREP}" -c . "${WORK_DIR}/names" || true)
-files_changed=${files_changed:-0}
+# Count non-empty lines (one path per changed file). awk exits 0 even for an
+# empty file, so a genuine read error surfaces instead of being masked as 0.
+files_changed=$(awk 'NF { c++ } END { print c + 0 }' "${WORK_DIR}/names")
 
 # Sum insertions/deletions from numstat, skipping binary files ('-' columns).
 read -r insertions deletions < <(awk '
@@ -78,15 +69,16 @@ languages=$(awk -F/ '
 # (empty input yields [] naturally; a genuine jq failure aborts under set -e.)
 
 names_lc=$(tr '[:upper:]' '[:lower:]' <"${WORK_DIR}/names")
-# Only added/changed content lines (leading '+', excluding the '+++' file header).
-added=$("${GREP}" -E '^\+' "${WORK_DIR}/patch" | "${GREP}" -vE '^\+\+\+' || true)
+# Added/changed content lines (leading '+', excluding the '+++' file header).
+# awk avoids the grep '|| true' that would otherwise mask a real read failure.
+added=$(awk '/^\+/ && !/^\+\+\+/' "${WORK_DIR}/patch")
 added_lc=$(tr '[:upper:]' '[:lower:]' <<<"${added}")
 
 # Pattern presence test via here-string, NOT a pipe: under `set -euo pipefail`
 # a piped `grep -q` exits at the first match and SIGPIPEs the upstream writer,
 # which aborts the whole script on large (high-tier) diffs before any JSON.
 has() {
-    if "${GREP}" -qE "$1" <<<"$2"; then
+    if grep -qE "$1" <<<"$2"; then
         echo true
     else
         local rc=$?
@@ -98,22 +90,24 @@ has() {
 }
 
 dim_tests=$(has '(^|/)tests?/|(^|/)test_|_test\.|\.test\.|\.spec\.|_spec\.' "${names_lc}")
-if "${GREP}" -qE '\.pyi$|\.d\.ts$' <<<"${names_lc}"; then
+if grep -qE '\.pyi$|\.d\.ts$' <<<"${names_lc}"; then
     dim_types=true
 else
-    # case-insensitive (added_lc) so Python TypedDict/Protocol/Enum still match.
-    dim_types=$(has '\b(interface|type |typeddict|protocol|@dataclass|enum )' "${added_lc}")
+    # POSIX ERE word boundaries: (^|[^[:alnum:]_]) / ([^[:alnum:]_]|$). \b/\s are
+    # not POSIX and break on non-GNU grep. @dataclass is a substring (a leading
+    # boundary before '@' never holds). case-insensitive via added_lc.
+    dim_types=$(has '(^|[^[:alnum:]_])(interface|typeddict|protocol)([^[:alnum:]_]|$)|@dataclass|(^|[^[:alnum:]_])(type|enum)[[:space:]]' "${added_lc}")
 fi
-dim_error=$(has '\b(try|except|catch|finally|raise|throw)\b|rescue ' "${added}")
-if "${GREP}" -qE '\.mdx?$|\.rst$' <<<"${names_lc}"; then
+dim_error=$(has '(^|[^[:alnum:]_])(try|except|catch|finally|raise|throw|rescue)([^[:alnum:]_]|$)' "${added}")
+if grep -qE '\.mdx?$|\.rst$' <<<"${names_lc}"; then
     dim_comments=true
 else
     dim_comments=$(has '^\+[[:space:]]*(#|//|/\*|\*|"""|'"'''"')' "${added}")
 fi
 dim_migrations=$(has '(^|/)migrations?/|alembic|\.sql$|schema\.' "${names_lc}")
-dim_security=$(has '\bauthn?\b|authenticat|authoriz|oauth|\btoken\b|secret|password|passwd|jwt|\bcrypto\b|\bhmac\b|\beval\b|subprocess|os\.system|\.execute\(|\bsql\b' "${added_lc}")
+dim_security=$(has '(^|[^[:alnum:]_])(authn?|token|crypto|hmac|eval|sql)([^[:alnum:]_]|$)|authenticat|authoriz|oauth|secret|password|passwd|jwt|subprocess|os\.system|\.execute\(' "${added_lc}")
 # concurrency stays case-sensitive: patterns like Thread(/Lock(/Semaphore are capitalized.
-dim_concurrency=$(has '\b(async|await|asyncio|threading|Thread\(|goroutine|go func|mutex|Lock\(|RLock\(|Semaphore)' "${added}")
+dim_concurrency=$(has '(^|[^[:alnum:]_])(async|await|asyncio|threading|goroutine|mutex|Semaphore|Thread\(|Lock\(|RLock\()|go func' "${added}")
 
 # Tier classification.
 has_risk=false
