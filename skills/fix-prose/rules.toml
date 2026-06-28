@@ -42,6 +42,7 @@ testament = ["sign", "proof"]
 tapestry = ["mix", "range"]
 realm = ["area", "field"]
 "first and foremost" = ["first"]
+ratchet = ["step up", "creep up", "climb without dropping back"]
 
 # --- contextual: 技術文脈では許容。それ以外では直す --------------------------
 # 形式:  base = { suggest = [...], allow_in = ["technical", ...], note = "..." }
