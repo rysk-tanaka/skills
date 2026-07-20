@@ -79,4 +79,8 @@ ${CONTEXT_SECTION}## 依頼
 ${DIFF}
 \`\`\`"
 
-exec agy -p "${PROMPT}" --model "${MODEL}" --print-timeout "${PRINT_TIMEOUT}"
+# Headless (-p) auto-denies any tool that needs a permission prompt, which
+# kills the run as soon as the reviewer tries to read repo files. Skip the
+# prompts, and keep --sandbox so terminal commands stay confined.
+exec agy -p "${PROMPT}" --model "${MODEL}" --print-timeout "${PRINT_TIMEOUT}" \
+    --sandbox --dangerously-skip-permissions
