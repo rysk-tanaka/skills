@@ -6,6 +6,7 @@
   "timezone": "Asia/Tokyo",
   "schedule": ["before 9am on saturday"],
   "minimumReleaseAge": "3 days",
+  "platformAutomerge": false,
   "packageRules": [
     {
       "matchUpdateTypes": ["minor", "patch"],
