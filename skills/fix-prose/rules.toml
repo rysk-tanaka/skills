@@ -177,6 +177,9 @@ bare_emf = { regex = '(?<!CloudWatch )\bEMF\b', suggest = ["CloudWatch EMF"], no
 "emit" = ["送出する", "送出", "出力する"]
 "既定状態への回帰" = ["想定どおりの挙動", "元の設定に戻るだけ"]
 "着信" = ["受信", "到達"]
+"free" = ["解放", "解放対象"]
+"enable" = ["有効化", "有効化対象"]
+"disable" = ["無効化"]
 
 # --- contextual: ヘッジ / 冗長。断定できる場面では言い切る -------------------
 [ja.contextual]
