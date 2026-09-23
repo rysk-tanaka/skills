@@ -56,6 +56,8 @@ PROMPT="あなたはコードレビュアーです。以下の diff をレビュ
 
 ${CONTEXT_SECTION}## 依頼
 
+これは読み取り専用のレビューです。ファイルの作成・変更・削除や、git の状態を変える操作は行わず、確認はファイルを読むことだけで行ってください。
+
 既存の挙動を壊すバグ、境界条件の誤り、セキュリティ上の問題、テストの検証漏れを重点的に探してください。
 判断に迷ったら、リポジトリ内の該当ファイルを読んで diff の前後の実装を確認してください。
 設計判断・規約は AGENTS.md（無ければ CLAUDE.md）と docs/ 配下を読んで確認し、
@@ -79,8 +81,43 @@ ${CONTEXT_SECTION}## 依頼
 ${DIFF}
 \`\`\`"
 
+# --sandbox only restricts terminal commands; agy's own file-edit tools still
+# write into the workspace, and the reviewer has been seen dropping debug
+# scripts into the repo to test hypotheses. Run it inside a throwaway detached
+# worktree of HEAD so such writes never reach the caller's working tree.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+WT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/agy-review.XXXXXX")"
+# shellcheck disable=SC2329  # invoked via trap
+cleanup() {
+    git -C "${REPO_ROOT}" worktree remove --force "${WT_DIR}" >/dev/null 2>&1 || true
+    rmdir "${WT_DIR}" 2>/dev/null || true
+    git -C "${REPO_ROOT}" worktree prune >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+if ! git -C "${REPO_ROOT}" worktree add --detach --quiet "${WT_DIR}" HEAD; then
+    echo "ERROR: failed to create a temporary worktree for the review" >&2
+    exit 1
+fi
+
+# The worktree isolates relative writes only; absolute-path writes or git ref
+# changes can still reach the caller. Snapshot both to detect such leaks.
+snapshot_state() {
+    git -C "${REPO_ROOT}" rev-parse HEAD
+    git -C "${REPO_ROOT}" status --porcelain=v1 --untracked-files=all
+}
+STATE_BEFORE="$(snapshot_state)"
+
 # Headless (-p) auto-denies any tool that needs a permission prompt, which
 # kills the run as soon as the reviewer tries to read repo files. Skip the
 # prompts, and keep --sandbox so terminal commands stay confined.
-exec agy -p "${PROMPT}" --model "${MODEL}" --print-timeout "${PRINT_TIMEOUT}" \
-    --sandbox --dangerously-skip-permissions
+status=0
+(cd "${WT_DIR}" && agy -p "${PROMPT}" --model "${MODEL}" --print-timeout "${PRINT_TIMEOUT}" \
+    --sandbox --dangerously-skip-permissions) || status=$?
+
+# Exit 3 (not 1) keeps the review text usable: in background runs the change
+# may just be the user's own concurrent edits, so the caller decides.
+if [ "$(snapshot_state)" != "${STATE_BEFORE}" ]; then
+    echo "WARNING: the caller's working tree or HEAD changed during the agy review (agy leak or concurrent edits); inspect 'git status'" >&2
+    exit 3
+fi
+exit "${status}"
