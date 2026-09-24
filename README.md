@@ -23,7 +23,6 @@ gh skill install rysk-tanaka/skills auto-commit --agent claude-code --scope user
 | `pr` | user | ブランチ差分を分析し、リポジトリの template に従って pull request を作成 |
 | `resolve-review` | user | PR の未解決レビューコメントを取得・分類(CI 待機 helper を同梱) |
 | `suggest-branch` | user | working tree の状態からブランチ名候補を提案 |
-| `codex-review` | user | Codex CLI でコードレビューを実行し、結果を分類して報告 |
 | `review-router` | user | 差分を分析し規模・観点から tier を判定して適切なレビューを自動振り分け |
 | `drawio` | project | `.drawio` 図表を生成、PNG / SVG / PDF へエクスポート可 |
 | `drawio-aws` | project | `drawio` 経由で AWS 4 アイコンセットを使った AWS アーキテクチャ図を生成 |
@@ -41,8 +40,7 @@ gh skill install rysk-tanaka/skills auto-commit --agent claude-code --scope user
 
 skill 別の外部依存。
 
-- `auto-commit`, `await-ci`, `pr`, `resolve-review`, `suggest-branch`, `codex-review`: `git`, `gh`, `jq`
-- `codex-review`: Codex CLI (`codex`)
+- `auto-commit`, `await-ci`, `pr`, `resolve-review`, `suggest-branch`: `git`, `gh`, `jq`
 - `review-router`: `git`, `jq` (差分解析)。レビュー本体は pr-review-toolkit プラグインのサブエージェント、high tier では任意で `coderabbit` CLI
 - `drawio`, `drawio-aws`: draw.io デスクトップアプリ
 - `cloudwatch-logs`: `uv`, AWS 認証情報

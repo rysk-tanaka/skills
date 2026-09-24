@@ -48,4 +48,4 @@ allowed-tools: Bash(bash *) BashOutput # space-delimited、command 名ベース
 - `set -euo pipefail` で開始。`mktemp -d` + `trap 'rm -rf "$WORK_DIR"' EXIT` で一時ファイルを掃除。
 - 外部依存は readme に記載済み: bash/Python skill 共通で `git`, `gh`, `jq`。Python skill は `uv run` で起動し PEP 723 inline script metadata で依存を宣言する(`cloudwatch-logs/cloudwatch_logs.py` 参照)。
 - 大きな diff を含む output(`auto-commit`, `pr`)はデフォルトで lockfile / 500 行超 / 50KB 超を除外する。
-- バックグラウンド対応 skill (`codex-review`, `resolve-review`) は `--bg` 引数で `run_in_background=true` に切り替え、`$HOME/.cache/claude-bg/<name>-*.txt` にログを残す方式。
+- バックグラウンド対応 skill (`resolve-review`) は `--bg` 引数で `run_in_background=true` に切り替える方式。
