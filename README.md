@@ -73,10 +73,13 @@ agentskills.io 仕様および Claude Code 固有の挙動に関する実証ベ�
 # 1. frontmatter / メタデータ validation
 gh skill publish --dry-run
 
-# 2. release tag を切る (GitHub Release を作成、--fix で provenance metadata を剥がす)
-gh skill publish --fix --tag vX.Y.Z
+# 2. install metadata が残っていれば剥がす (--fix は修正のみで publish しない。変更が出たら commit する)
+gh skill publish --fix
 
-# 3. topic 確認 (初回のみ、agent-skills が無ければ追加)
+# 3. release tag を切る (GitHub Release を作成)
+gh skill publish --tag vX.Y.Z
+
+# 4. topic 確認 (初回のみ、agent-skills が無ければ追加)
 gh repo edit rysk-tanaka/skills --add-topic agent-skills
 ```
 

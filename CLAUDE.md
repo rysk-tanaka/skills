@@ -21,7 +21,7 @@ skills/<skill-name>/
 
 ## 検証 / リリース
 
-このリポジトリは build / test / lint の中央 task runner を持たない。検証コマンド (`gh skill publish --dry-run` / fresh session での実機テスト) と release 手順 (`gh skill publish --fix --tag`) は [README.md の「リリース」節](README.md#リリース-maintainer-向け) を参照。
+このリポジトリは build / test / lint の中央 task runner を持たない。検証コマンド (`gh skill publish --dry-run` / fresh session での実機テスト) と release 手順 (`gh skill publish --fix` の後に `gh skill publish --tag`) は [README.md の「リリース」節](README.md#リリース-maintainer-向け) を参照。
 
 linter は dotfiles repo から symlink された `.markdownlint-cli2.jsonc` と `.pre-commit-config.yaml` が pre-commit hook として動く。
 
