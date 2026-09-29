@@ -63,4 +63,6 @@ LMS_TEXT
 | `LMS_REVIEW_MODEL` | モデルキー（`lms ls` で確認） | `qwen/qwen3.6-35b-a3b` |
 | `LMS_REVIEW_TIMEOUT` | リクエストのタイムアウト秒数 | `900` |
 | `LMS_REVIEW_MAX_DIFF_BYTES` | diff の上限 | `60000` |
+| `LMS_REVIEW_THINKING` | `true` で思考させる（深く読めるが、同じ箇所の確認を繰り返してタイムアウトすることがある） | `false` |
+| `LMS_REVIEW_MAX_TOKENS` | 出力トークンの上限（思考を含む）。超えるとエラーで終わる | `16384` |
 | `LMS_REVIEW_TTL` | JIT ロードしたモデルを最後のリクエストからアンロードするまでの秒数 | `600` |

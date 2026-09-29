@@ -104,7 +104,7 @@ REVIEW_TEXT
 
 Mac mini 上の LM Studio（Qwen3.6-35B-A3B）で独立レビューを並行実行する。medium tier 以上では常に起動を試み、使えなければ skip する（接続確認は 5 秒で終わるため試行コストは小さい）。
 
-必ず `run_in_background=true` で起動する。ローカルモデルの思考は長く、ラッパーのタイムアウト（既定 900 秒）が Bash ツールの上限 600 秒を超えるため、フォアグラウンドでは打ち切られる。
+必ず `run_in_background=true` で起動する。モデルの読み込みや思考（`LMS_REVIEW_THINKING=true`）で長引くことがあり、ラッパーのタイムアウト（既定 900 秒）が Bash ツールの上限 600 秒を超えるため、フォアグラウンドでは打ち切られる。
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/../lms-review/lms-review.sh "<base>" "$(cat <<'REVIEW_TEXT'

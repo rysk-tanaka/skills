@@ -20,9 +20,22 @@ MODEL="${LMS_REVIEW_MODEL:-qwen/qwen3.6-35b-a3b}"       # MoE is ~6x faster than
 TIMEOUT_SEC="${LMS_REVIEW_TIMEOUT:-900}"                # reasoning can run 10K+ tokens; be generous
 TTL_SEC="${LMS_REVIEW_TTL:-600}"                        # unload 10 min after the last request (JIT only)
 MAX_DIFF_BYTES="${LMS_REVIEW_MAX_DIFF_BYTES:-60000}"    # keep prompt + output within a 32K context
+# Reasoning length is unpredictable (2K to 44K+ tokens on the same model): it
+# can loop re-checking settled points until the timeout, so it is opt-in and
+# capped by MAX_TOKENS to fail fast instead.
+THINKING="${LMS_REVIEW_THINKING:-false}"
+MAX_TOKENS="${LMS_REVIEW_MAX_TOKENS:-16384}"
 
 BASE_BRANCH="${1:?usage: lms-review.sh <base> [context]}"
 CONTEXT="${2:-}"
+
+case "${THINKING}" in
+    true | false) ;;
+    *) echo "ERROR: LMS_REVIEW_THINKING must be true or false" >&2; exit 1 ;;
+esac
+case "${MAX_TOKENS}" in
+    '' | *[!0-9]* | 0*) echo "ERROR: LMS_REVIEW_MAX_TOKENS must be a positive integer" >&2; exit 1 ;;
+esac
 
 for cmd in curl jq perl; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
@@ -145,11 +158,16 @@ ${CONTEXT_SECTION}## 依頼
 ${DIFF}
 \`\`\`"
 
+# LM Studio only honors reasoning_effort "none" (low/medium/high all think the
+# same); chat_template_kwargs.enable_thinking is ignored.
 printf '%s' "${PROMPT}" | jq -Rs \
     --arg model "${MODEL}" \
     --argjson ttl "${TTL_SEC}" \
-    '{model: $model, ttl: $ttl, temperature: 0.2, stream: false,
-      messages: [{role: "user", content: .}]}' >"${PAYLOAD_FILE}"
+    --argjson thinking "${THINKING}" \
+    --argjson max_tokens "${MAX_TOKENS}" \
+    '{model: $model, ttl: $ttl, temperature: 0.2, stream: false, max_tokens: $max_tokens,
+      messages: [{role: "user", content: .}]}
+     + (if $thinking then {} else {reasoning_effort: "none"} end)' >"${PAYLOAD_FILE}"
 
 # --fail-with-body keeps LM Studio's error JSON (wrong model key, context
 # overflow, ...) so the cause is visible instead of a bare curl exit code.
@@ -177,7 +195,7 @@ fi
 # stdout verbatim.
 FINISH_REASON="$(printf '%s' "${RESPONSE}" | jq -r '.choices[0].finish_reason // empty')"
 if [ "${FINISH_REASON}" = "length" ]; then
-    echo "ERROR: model output was truncated at the token limit (finish_reason: length); try a smaller diff or a larger context" >&2
+    echo "ERROR: model output was truncated at the token limit (finish_reason: length, max ${MAX_TOKENS}); if LMS_REVIEW_THINKING=true, the reasoning likely looped; retry without it or with a smaller diff" >&2
     exit 1
 fi
 
