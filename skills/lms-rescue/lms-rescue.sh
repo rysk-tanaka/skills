@@ -15,7 +15,7 @@ TOKEN="${LM_API_TOKEN:-}"
 
 # Tunables. Override via environment when needed.
 MODEL="${LMS_RESCUE_MODEL:-qwen/qwen3.6-35b-a3b}"      # MoE keeps multi-turn agent loops fast
-CONTEXT_WINDOW="${LMS_RESCUE_CONTEXT_WINDOW:-}"        # match LM Studio's loaded context length
+CONTEXT_WINDOW="${LMS_RESCUE_CONTEXT_WINDOW:-}"        # defaults to the model's loaded context length
 # A dedicated CODEX_HOME keeps these sessions out of the user's regular Codex
 # history (so --resume never picks up a cloud Codex thread) and skips the
 # user's Codex config (MCP servers, plugins) that a local model may choke on.
@@ -38,6 +38,9 @@ if [ -z "${TASK}" ]; then
     echo "usage: lms-rescue.sh [--write] [--resume] [--model <key>] <task...>" >&2
     exit 1
 fi
+case "${CONTEXT_WINDOW}" in
+    *[!0-9]* | 0*) echo "ERROR: LMS_RESCUE_CONTEXT_WINDOW must be a positive integer" >&2; exit 1 ;;
+esac
 
 for cmd in codex curl git jq; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
@@ -98,9 +101,6 @@ CODEX_ARGS=(
     -c "sandbox_mode=\"${SANDBOX}\""
     -c 'project_doc_fallback_filenames=["CLAUDE.md"]'
 )
-if [ -n "${CONTEXT_WINDOW}" ]; then
-    CODEX_ARGS+=(-c "model_context_window=${CONTEXT_WINDOW}")
-fi
 
 mkdir -p "${STATE_DIR}/codex" "${STATE_DIR}/logs" "${STATE_DIR}/models"
 export CODEX_HOME="${STATE_DIR}/codex"
@@ -125,6 +125,23 @@ if ! printf '%s' "${MODELS_JSON}" | jq -e --arg m "${MODEL}" 'any(.data[]?; .id 
     AVAILABLE="$(printf '%s' "${MODELS_JSON}" | jq -r '[.data[]?.id] | join(", ")' 2>/dev/null || true)"
     echo "ERROR: model '${MODEL}' not found on LM Studio (available: ${AVAILABLE:-none})" >&2
     exit 1
+fi
+
+# Codex cannot learn LM Studio's context length on its own. Without it Codex
+# never compacts, LM Studio silently drops the middle of the overflowing
+# prompt, and the model forgets what it already read and loops re-reading it.
+# Compaction starts at 75% to leave room for the model's output.
+if [ -z "${CONTEXT_WINDOW}" ]; then
+    CONTEXT_WINDOW="$(curl -sS --max-time 10 -H @"${HEADER_FILE}" "${API_URL%/}/api/v0/models/${MODEL}" 2>/dev/null |
+        jq -r '.loaded_context_length | select(type == "number")' 2>/dev/null || true)"
+fi
+if [ -n "${CONTEXT_WINDOW}" ]; then
+    CODEX_ARGS+=(
+        -c "model_context_window=${CONTEXT_WINDOW}"
+        -c "model_auto_compact_token_limit=$((CONTEXT_WINDOW * 3 / 4))"
+    )
+else
+    echo "WARN: context length of '${MODEL}' unknown (not loaded yet?); Codex will not compact before LM Studio truncates. Set LMS_RESCUE_CONTEXT_WINDOW to fix." >&2
 fi
 
 # A fresh run records its model up front: the session is created with it even
