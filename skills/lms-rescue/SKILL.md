@@ -73,7 +73,7 @@ LMS_TEXT
 | `LM_API_TOKEN` | 認証トークン | なし |
 | `LM_API_TOKEN_COMMAND` | トークンを標準出力に出すコマンド（例: `op read 'op://...'`）。`LM_API_TOKEN` が空のとき、接続確認の後にだけ実行される | なし |
 | `LMS_RESCUE_MODEL` | モデルキー | `qwen/qwen3.6-35b-a3b` |
-| `LMS_RESCUE_CONTEXT_WINDOW` | LM Studio 側のコンテキスト長（Codex の自動圧縮の目安） | なし |
+| `LMS_RESCUE_CONTEXT_WINDOW` | LM Studio 側のコンテキスト長（Codex はその 75% で自動圧縮する） | 読み込み中のモデルから取得 |
 | `LMS_RESCUE_HOME` | セッションとログの保存先 | `~/.local/state/lms-rescue` |
 
 セッションは専用の `CODEX_HOME`（`$LMS_RESCUE_HOME/codex`）に保存されるため、普段の Codex の履歴や設定とは混ざらない。実行ごとの詳細ログは `$LMS_RESCUE_HOME/logs/` に残る。
