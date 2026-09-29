@@ -143,6 +143,10 @@ fi
 if [ -z "${CONTEXT_WINDOW}" ]; then
     CONTEXT_WINDOW="$(curl -sS --max-time 10 -H @"${HEADER_FILE}" "${API_URL%/}/api/v0/models/${MODEL}" 2>/dev/null |
         jq -r '.loaded_context_length | select(type == "number")' 2>/dev/null || true)"
+    # Fall back to the WARN path rather than crash on a value bash cannot do math on.
+    case "${CONTEXT_WINDOW}" in
+        *[!0-9]* | 0*) CONTEXT_WINDOW="" ;;
+    esac
 fi
 if [ -n "${CONTEXT_WINDOW}" ]; then
     CODEX_ARGS+=(
