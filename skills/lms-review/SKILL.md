@@ -63,3 +63,4 @@ LMS_TEXT
 | `LMS_REVIEW_MODEL` | モデルキー（`lms ls` で確認） | `qwen/qwen3.6-27b` |
 | `LMS_REVIEW_TIMEOUT` | リクエストのタイムアウト秒数 | `900` |
 | `LMS_REVIEW_MAX_DIFF_BYTES` | diff の上限 | `60000` |
+| `LMS_REVIEW_TTL` | JIT ロードしたモデルを最後のリクエストからアンロードするまでの秒数 | `600` |

@@ -115,7 +115,7 @@ REVIEW_TEXT
 
 - 引数と出力の扱いは agy CLI と同じ。単独の指摘は裏取りできるまで Suggestion に留める
 - モデルは diff しか見ない（リポジトリを読めない）ため、推測に基づく指摘は「低確信」として扱う
-- ラッパーは `lms-review` skill に同梱されている。`lms-review` skill が入っておらず script が無い場合は skip する。接続先・認証の環境変数は `lms-review` の SKILL.md を参照
+- ラッパーは `lms-review` skill に同梱されており、兄弟ディレクトリとして相対パスで参照するため、`lms-review` は `review-router` と同じ scope にインストールする。`lms-review` skill が入っておらず script が無い場合は skip する。接続先・認証の環境変数は `lms-review` の SKILL.md を参照
 - サーバーに接続できない、diff が上限超過、タイムアウトなど非ゼロで終了した場合は skip し、その旨を報告する
 
 ## 4. 結果の集約

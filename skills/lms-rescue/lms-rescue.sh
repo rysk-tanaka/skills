@@ -39,7 +39,7 @@ if [ -z "${TASK}" ]; then
     exit 1
 fi
 
-for cmd in codex curl jq; do
+for cmd in codex curl git jq; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
         echo "ERROR: ${cmd} not found" >&2
         exit 1
@@ -109,7 +109,7 @@ export CODEX_HOME="${STATE_DIR}/codex"
 # back to Codex's own default, which LM Studio does not serve. Remember the
 # model per directory (resume --last is scoped to the cwd too) so a resume
 # without --model continues on the model the session started with.
-MODEL_FILE="${STATE_DIR}/models/$(printf '%s' "${PWD}" | shasum | cut -c1-40)"
+MODEL_FILE="${STATE_DIR}/models/$(printf '%s' "${PWD}" | git hash-object --stdin | cut -c1-40)"
 if [ "${RESUME}" = true ] && [ "${HAS_EXPLICIT_MODEL}" = false ] && [ -s "${MODEL_FILE}" ]; then
     MODEL="$(cat "${MODEL_FILE}")"
 fi
