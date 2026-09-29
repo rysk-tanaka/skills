@@ -21,7 +21,7 @@ allowed-tools: Bash(bash *) BashOutput Task
 
 ## 1. 差分の分析
 
-`bash ${CLAUDE_SKILL_DIR}/analyze.sh "$ARGUMENTS"` を実行し、出力 JSON を取得する（`$ARGUMENTS` は必ずダブルクォートで囲み、ワード分割・glob を防ぐ）。
+`bash ${CLAUDE_SKILL_DIR}/analyze.sh "$ARGUMENTS"` を実行し、出力 JSON を取得する。ワード分割・glob を防ぐため、`$ARGUMENTS` は必ずダブルクォートで囲む。
 
 - ベースブランチが見つからない等で非ゼロ終了した場合は、エラー内容を報告して終了する
 - 差分が空（files_changed が 0）の場合は、レビュー対象が無い旨を報告して終了する
@@ -80,7 +80,7 @@ JSON の構造。
 - confidence 80 以上の指摘だけ報告する
 - 各指摘に file:line と確信度を含める
 
-該当プラグインが利用不可（サブエージェント type が存在しない）の場合は、その観点を skip し報告する。
+該当プラグインが利用不可でサブエージェント type が存在しない場合は、その観点を飛ばして報告する。
 
 ### agy CLI（medium tier 以上）
 
@@ -93,18 +93,18 @@ REVIEW_TEXT
 )"
 ```
 
-- コミット済みの変更のみレビューする（ラッパーが `git diff <base>...HEAD` を埋め込むため、未コミットの作業ツリーは巻き込まない）
-- `<base>` は JSON の `base` を使う（`origin/main` 等の remote-tracking ref に解決されている場合もそのまま渡す）
+- ラッパーが `git diff <base>...HEAD` を埋め込むため、レビューするのはコミット済みの変更だけで、未コミットの作業ツリーは巻き込まない
+- `<base>` は JSON の `base` をそのまま渡す。`origin/main` 等の remote-tracking ref に解決されている場合も書き換えない
 - `<変更概要>` は差分から読み取った変更の目的・背景の 1〜2 文（省略可）。レビュー精度が上がるため原則渡す
 - `<変更概要>` は本文を展開しない quoted heredoc（`<<'REVIEW_TEXT'`）で渡す。ダブルクォートに直接埋め込むと、識別子を囲むバッククォートや `$(...)` をシェルがコマンドとして実行してしまうため
-- agy は使い捨ての detached worktree 内で動かす（`--sandbox` はターミナルしか制限せず、agy が検証用ファイルを書き込むことがあるため）。それでも呼び出し元の作業ツリーや HEAD が変わった場合、ラッパーは終了コード 3 で終わる。レビュー結果は使ってよいが、`git status` を確認し、agy による意図しない変更（ユーザー自身の並行編集ではないもの）があればユーザーに報告する
-- `agy` CLI が無い・未サインイン、diff が上限超過、または 3 以外の非ゼロで終了した場合は skip し、その旨を報告する。失敗はフロー全体を止めない（導入は mise の `aqua:google-antigravity/antigravity-cli`）
+- `--sandbox` はターミナルしか制限せず、agy が検証用ファイルを書き込むことがあるため、agy は使い捨ての detached worktree 内で動かす。それでも呼び出し元の作業ツリーや HEAD が変わった場合、ラッパーは終了コード 3 で終わる。レビュー結果は使ってよいが、`git status` を確認し、ユーザー自身の並行編集ではない、agy による意図しない変更があればユーザーに報告する
+- `agy` CLI が無い・未サインイン、diff が上限超過、または 3 以外の非ゼロで終了した場合は飛ばし、その旨を報告する。失敗はフロー全体を止めない。導入は mise の `aqua:google-antigravity/antigravity-cli`
 
 ### ローカル LLM（medium tier 以上）
 
-Mac mini 上の LM Studio（Qwen3.6-35B-A3B）で独立レビューを並行実行する。medium tier 以上では常に起動を試み、使えなければ skip する（接続確認は 5 秒で終わるため試行コストは小さい）。
+Mac mini 上の LM Studio（Qwen3.6-35B-A3B）で独立レビューを並行実行する。medium tier 以上では常に起動を試み、使えなければ飛ばす。接続確認は 5 秒で終わるため、試行コストは小さい。
 
-必ず `run_in_background=true` で起動する。ローカルモデルの思考は長く、ラッパーのタイムアウト（既定 900 秒）が Bash ツールの上限 600 秒を超えるため、フォアグラウンドでは打ち切られる。
+必ず `run_in_background=true` で起動する。モデルの読み込みや思考（`LMS_REVIEW_THINKING=true`）で長引くことがあり、ラッパーのタイムアウト（既定 900 秒）が Bash ツールの上限 600 秒を超えるため、フォアグラウンドでは打ち切られる。
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/../lms-review/lms-review.sh "<base>" "$(cat <<'REVIEW_TEXT'
@@ -114,9 +114,9 @@ REVIEW_TEXT
 ```
 
 - 引数と出力の扱いは agy CLI と同じ。単独の指摘は裏取りできるまで Suggestion に留める
-- モデルは diff しか見ない（リポジトリを読めない）ため、推測に基づく指摘は「低確信」として扱う
-- ラッパーは `lms-review` skill に同梱されており、兄弟ディレクトリとして相対パスで参照するため、`lms-review` は `review-router` と同じ scope にインストールする。`lms-review` skill が入っておらず script が無い場合は skip する。接続先・認証の環境変数は `lms-review` の SKILL.md を参照
-- サーバーに接続できない、diff が上限超過、タイムアウトなど非ゼロで終了した場合は skip し、その旨を報告する
+- モデルは diff しか見ずリポジトリを読めないため、推測に基づく指摘は「低確信」として扱う
+- ラッパーは `lms-review` skill に同梱されており、兄弟ディレクトリとして相対パスで参照するため、`lms-review` は `review-router` と同じ scope にインストールする。`lms-review` skill が入っておらず script が無い場合は飛ばす。接続先・認証の環境変数は `lms-review` の SKILL.md を参照
+- サーバーに接続できない、diff が上限超過、タイムアウトなど非ゼロで終了した場合は飛ばし、その旨を報告する
 
 ## 4. 結果の集約
 
@@ -131,13 +131,13 @@ REVIEW_TEXT
 報告の方針。
 
 - カテゴリごとにグループ化し、各指摘に file:line を付ける
-- agy CLI・ローカル LLM 単独の指摘（他レビュアーと重複しない指摘）は、コードを読んで裏取りできるまで Suggestion に留める（実行ごとのブレ・誤検出を出口で吸収する）
+- agy CLI・ローカル LLM 単独の指摘（他レビュアーと重複しない指摘）は、コードを読んで裏取りできるまで Suggestion に留め、実行ごとのブレ・誤検出を出口で吸収する
 - Must-Fix が無い場合はその旨を明記する
-- 停止条件を明示する。反復は「Must-Fix がゼロ」になったら打ち切る（指摘ゼロまで回さない）
+- 停止条件を明示する。反復は「Must-Fix がゼロ」になったら打ち切り、指摘ゼロまでは回さない
 
 ## 5. 追加レビューの提案（high tier のみ）
 
-high tier では、自動実行に加えて以下を「必要なら手動で走らせるべき」と提案する（自動実行しない）。
+high tier では、自動実行に加えて以下を「必要なら手動で走らせるべき」と提案するが、自動実行はしない。
 
 - `/codex:review <base>` - Codex による独立レビュー
 - `/code-review ultra` - クラウドの深掘りマルチエージェントレビュー
