@@ -55,8 +55,8 @@ JSON の構造。
 | tier | 自動実行 | 提案のみ |
 | --- | --- | --- |
 | low | code-reviewer のみ | なし |
-| medium | code-reviewer ＋ true の観点に対応するサブエージェント ＋ agy CLI（並行） | なし |
-| high | code-reviewer ＋ true の観点に対応するサブエージェント全部 ＋ agy CLI（並行） | codex / `/code-review ultra` |
+| medium | code-reviewer ＋ true の観点に対応するサブエージェント ＋ agy CLI ＋ ローカル LLM（並行） | なし |
+| high | code-reviewer ＋ true の観点に対応するサブエージェント全部 ＋ agy CLI ＋ ローカル LLM（並行） | codex / `/code-review ultra` |
 
 観点 → pr-review-toolkit サブエージェント対応。
 
@@ -87,16 +87,40 @@ JSON の構造。
 Antigravity CLI (agy) で Claude / Codex と系統の異なる Gemini による独立レビューを並行実行する（バックグラウンド起動可）。
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/agy-review.sh "<base>" "<変更概要>"
+bash ${CLAUDE_SKILL_DIR}/agy-review.sh "<base>" "$(cat <<'REVIEW_TEXT'
+<変更概要>
+REVIEW_TEXT
+)"
 ```
 
 - コミット済みの変更のみレビューする（ラッパーが `git diff <base>...HEAD` を埋め込むため、未コミットの作業ツリーは巻き込まない）
 - `<base>` は JSON の `base` を使う（`origin/main` 等の remote-tracking ref に解決されている場合もそのまま渡す）
 - `<変更概要>` は差分から読み取った変更の目的・背景の 1〜2 文（省略可）。レビュー精度が上がるため原則渡す
+- `<変更概要>` は本文を展開しない quoted heredoc（`<<'REVIEW_TEXT'`）で渡す。ダブルクォートに直接埋め込むと、識別子を囲むバッククォートや `$(...)` をシェルがコマンドとして実行してしまうため
 - agy は使い捨ての detached worktree 内で動かす（`--sandbox` はターミナルしか制限せず、agy が検証用ファイルを書き込むことがあるため）。それでも呼び出し元の作業ツリーや HEAD が変わった場合、ラッパーは終了コード 3 で終わる。レビュー結果は使ってよいが、`git status` を確認し、agy による意図しない変更（ユーザー自身の並行編集ではないもの）があればユーザーに報告する
 - `agy` CLI が無い・未サインイン、diff が上限超過、または 3 以外の非ゼロで終了した場合は skip し、その旨を報告する。失敗はフロー全体を止めない（導入は mise の `aqua:google-antigravity/antigravity-cli`）
 
+### ローカル LLM（medium tier 以上）
+
+Mac mini 上の LM Studio（Qwen3.6-27B）で独立レビューを並行実行する。medium tier 以上では常に起動を試み、使えなければ skip する（接続確認は 5 秒で終わるため試行コストは小さい）。
+
+必ず `run_in_background=true` で起動する。27B は遅く、ラッパーのタイムアウト（既定 900 秒）が Bash ツールの上限 600 秒を超えるため、フォアグラウンドでは打ち切られる。
+
+```bash
+bash ${CLAUDE_SKILL_DIR}/../lms-review/lms-review.sh "<base>" "$(cat <<'REVIEW_TEXT'
+<変更概要>
+REVIEW_TEXT
+)"
+```
+
+- 引数と出力の扱いは agy CLI と同じ。単独の指摘は裏取りできるまで Suggestion に留める
+- モデルは diff しか見ない（リポジトリを読めない）ため、推測に基づく指摘は「低確信」として扱う
+- ラッパーは `lms-review` skill に同梱されており、兄弟ディレクトリとして相対パスで参照するため、`lms-review` は `review-router` と同じ scope にインストールする。`lms-review` skill が入っておらず script が無い場合は skip する。接続先・認証の環境変数は `lms-review` の SKILL.md を参照
+- サーバーに接続できない、diff が上限超過、タイムアウトなど非ゼロで終了した場合は skip し、その旨を報告する
+
 ## 4. 結果の集約
+
+バックグラウンドで起動したレビュー（agy CLI・ローカル LLM）は、完了通知が届くまで集約しない。先に終わったサブエージェントの結果だけで結論を出さない。
 
 全レビューの指摘をまとめ、重複を排除して以下に正規化する。
 
@@ -107,7 +131,7 @@ bash ${CLAUDE_SKILL_DIR}/agy-review.sh "<base>" "<変更概要>"
 報告の方針。
 
 - カテゴリごとにグループ化し、各指摘に file:line を付ける
-- agy CLI 単独の指摘（他レビュアーと重複しない指摘）は、コードを読んで裏取りできるまで Suggestion に留める（実行ごとのブレ・誤検出を出口で吸収する）
+- agy CLI・ローカル LLM 単独の指摘（他レビュアーと重複しない指摘）は、コードを読んで裏取りできるまで Suggestion に留める（実行ごとのブレ・誤検出を出口で吸収する）
 - Must-Fix が無い場合はその旨を明記する
 - 停止条件を明示する。反復は「Must-Fix がゼロ」になったら打ち切る（指摘ゼロまで回さない）
 
