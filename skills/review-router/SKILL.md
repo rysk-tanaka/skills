@@ -87,12 +87,16 @@ JSON の構造。
 Antigravity CLI (agy) で Claude / Codex と系統の異なる Gemini による独立レビューを並行実行する（バックグラウンド起動可）。
 
 ```bash
-bash ${CLAUDE_SKILL_DIR}/agy-review.sh "<base>" "<変更概要>"
+bash ${CLAUDE_SKILL_DIR}/agy-review.sh "<base>" "$(cat <<'REVIEW_TEXT'
+<変更概要>
+REVIEW_TEXT
+)"
 ```
 
 - コミット済みの変更のみレビューする（ラッパーが `git diff <base>...HEAD` を埋め込むため、未コミットの作業ツリーは巻き込まない）
 - `<base>` は JSON の `base` を使う（`origin/main` 等の remote-tracking ref に解決されている場合もそのまま渡す）
 - `<変更概要>` は差分から読み取った変更の目的・背景の 1〜2 文（省略可）。レビュー精度が上がるため原則渡す
+- `<変更概要>` は本文を展開しない quoted heredoc（`<<'REVIEW_TEXT'`）で渡す。ダブルクォートに直接埋め込むと、識別子を囲むバッククォートや `$(...)` をシェルがコマンドとして実行してしまうため
 - agy は使い捨ての detached worktree 内で動かす（`--sandbox` はターミナルしか制限せず、agy が検証用ファイルを書き込むことがあるため）。それでも呼び出し元の作業ツリーや HEAD が変わった場合、ラッパーは終了コード 3 で終わる。レビュー結果は使ってよいが、`git status` を確認し、agy による意図しない変更（ユーザー自身の並行編集ではないもの）があればユーザーに報告する
 - `agy` CLI が無い・未サインイン、diff が上限超過、または 3 以外の非ゼロで終了した場合は skip し、その旨を報告する。失敗はフロー全体を止めない（導入は mise の `aqua:google-antigravity/antigravity-cli`）
 
