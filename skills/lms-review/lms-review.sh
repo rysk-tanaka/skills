@@ -197,7 +197,7 @@ fi
 # stdout verbatim.
 FINISH_REASON="$(printf '%s' "${RESPONSE}" | jq -r '.choices[0].finish_reason // empty')"
 if [ "${FINISH_REASON}" = "length" ]; then
-    echo "ERROR: model output was truncated at the token limit (finish_reason: length, max ${MAX_TOKENS}); if LMS_REVIEW_THINKING=true, the reasoning likely looped; retry without it or with a smaller diff" >&2
+    echo "ERROR: model output was truncated at the token limit (finish_reason: length, max ${MAX_TOKENS}); raise LMS_REVIEW_MAX_TOKENS or retry with a smaller diff; if LMS_REVIEW_THINKING=true, the reasoning likely looped, so retry without it" >&2
     exit 1
 fi
 
