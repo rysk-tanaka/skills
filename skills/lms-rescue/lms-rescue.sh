@@ -94,12 +94,21 @@ if [ "${WRITE}" = true ]; then
 fi
 
 # Repos in this ecosystem often carry CLAUDE.md instead of AGENTS.md; let the
-# agent pick up the same project conventions Claude Code follows.
+# agent pick up the same project conventions Claude Code follows. The skills
+# catalog and the tools a local model cannot use (sub-agents, goals, image
+# generation, apps, plugins) are dropped because they permanently occupy the
+# small context of a local model without helping an investigation.
 CODEX_ARGS=(
     -c model_provider=lms_remote
     -c "model_providers.lms_remote=${PROVIDER}"
     -c "sandbox_mode=\"${SANDBOX}\""
     -c 'project_doc_fallback_filenames=["CLAUDE.md"]'
+    -c skills.include_instructions=false
+    -c features.multi_agent=false
+    -c features.goals=false
+    -c features.image_generation=false
+    -c features.apps=false
+    -c features.plugins=false
 )
 
 mkdir -p "${STATE_DIR}/codex" "${STATE_DIR}/logs" "${STATE_DIR}/models"
