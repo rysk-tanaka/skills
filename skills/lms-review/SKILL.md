@@ -60,7 +60,7 @@ LMS_TEXT
 | `LM_API_URL` | LM Studio サーバーのルート URL（`/v1` は付けない） | `http://localhost:1234` |
 | `LM_API_TOKEN` | 認証トークン | なし |
 | `LM_API_TOKEN_COMMAND` | トークンを標準出力に出すコマンド（例: `op read 'op://...'`）。`LM_API_TOKEN` が空のとき、接続確認の後にだけ実行される | なし |
-| `LMS_REVIEW_MODEL` | モデルキー（`lms ls` で確認） | `qwen/qwen3.6-27b` |
+| `LMS_REVIEW_MODEL` | モデルキー（`lms ls` で確認） | `qwen/qwen3.6-35b-a3b` |
 | `LMS_REVIEW_TIMEOUT` | リクエストのタイムアウト秒数 | `900` |
 | `LMS_REVIEW_MAX_DIFF_BYTES` | diff の上限 | `60000` |
 | `LMS_REVIEW_TTL` | JIT ロードしたモデルを最後のリクエストからアンロードするまでの秒数 | `600` |
