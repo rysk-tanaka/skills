@@ -21,9 +21,9 @@ LM Studio で動くローカル LLM に、ベースブランチとの差分（`g
 
 ## 実行
 
-`git log --oneline <base>..HEAD` でコミットを確認し（ローカルに `<base>` が無ければ `origin/<base>` を使う。スクリプトと同じ解決順）、変更の目的・背景を 1〜2 文にまとめる。コミットが無ければレビュー対象が無い旨を報告して終了する。
+`git log --oneline <base>..HEAD` でコミットを確認し、変更の目的・背景を 1〜2 文にまとめる。ローカルに `<base>` が無ければ、スクリプトと同じく `origin/<base>` を使う。コミットが無ければレビュー対象が無い旨を報告して終了する。
 
-次のコマンドを必ず `run_in_background=true` で起動する（ローカルモデルは数分かかり、ラッパーのタイムアウト既定 900 秒が Bash ツールの上限 600 秒を超えるため）。
+ローカルモデルは数分かかることがあり、ラッパーのタイムアウト既定 900 秒が Bash ツールの上限 600 秒を超えるため、次のコマンドは必ず `run_in_background=true` で起動する。
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/lms-review.sh "<base>" "$(cat <<'LMS_TEXT'
@@ -48,8 +48,8 @@ LMS_TEXT
 
 - サーバーに接続できない（Mac mini のスリープ、LM Studio 停止、Tailscale 切断）
 - diff が上限（既定 60KB）を超えている
-- モデルキーの誤り（LM Studio に無いキーは実行前に弾き、使えるモデルの一覧を出す）
-- 認証エラー（LM Studio のエラー本文が stderr に出る）
+- モデルキーの誤り。LM Studio に無いキーは実行前に弾き、使えるモデルの一覧を出す
+- 認証エラー。LM Studio のエラー本文が stderr に出る
 
 ## 設定
 
@@ -63,6 +63,6 @@ LMS_TEXT
 | `LMS_REVIEW_MODEL` | モデルキー（`lms ls` で確認） | `qwen/qwen3.6-35b-a3b` |
 | `LMS_REVIEW_TIMEOUT` | リクエストのタイムアウト秒数 | `900` |
 | `LMS_REVIEW_MAX_DIFF_BYTES` | diff の上限 | `60000` |
-| `LMS_REVIEW_THINKING` | `true` で思考させる（深く読めるが、同じ箇所の確認を繰り返してタイムアウトすることがある） | `false` |
+| `LMS_REVIEW_THINKING` | `true` で思考させる。深く読めるが、同じ箇所の確認を繰り返してタイムアウトすることがある | `false` |
 | `LMS_REVIEW_MAX_TOKENS` | 出力トークンの上限（思考を含む）。超えるとエラーで終わる | `16384` |
 | `LMS_REVIEW_TTL` | JIT ロードしたモデルを最後のリクエストからアンロードするまでの秒数 | `600` |

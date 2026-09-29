@@ -2,12 +2,12 @@
 # Run an independent review of the diff against a base branch via a local LLM
 # served by LM Studio (OpenAI-compatible API). Prints the review text on stdout.
 #
-# Unlike agy-review.sh, the model only sees the diff (no repo access, no tools),
-# so no worktree isolation is needed.
+# Unlike agy-review.sh, the model only sees the diff, with no repo access and no
+# tools, so no worktree isolation is needed.
 set -euo pipefail
 
 # Connection settings shared with other LM Studio clients. LM_API_URL is the
-# server root (the OpenAI-compatible /v1 is appended here). LM_API_TOKEN is the
+# server root; the OpenAI-compatible /v1 is appended here. LM_API_TOKEN is the
 # token itself; LM_API_TOKEN_COMMAND is an alternative that prints the token,
 # so the secret store stays the caller's choice and is only queried when a
 # review actually starts.
@@ -20,9 +20,9 @@ MODEL="${LMS_REVIEW_MODEL:-qwen/qwen3.6-35b-a3b}"       # MoE is ~6x faster than
 TIMEOUT_SEC="${LMS_REVIEW_TIMEOUT:-900}"                # reasoning can run 10K+ tokens; be generous
 TTL_SEC="${LMS_REVIEW_TTL:-600}"                        # unload 10 min after the last request (JIT only)
 MAX_DIFF_BYTES="${LMS_REVIEW_MAX_DIFF_BYTES:-60000}"    # keep prompt + output within a 32K context
-# Reasoning length is unpredictable (2K to 44K+ tokens on the same model): it
-# can loop re-checking settled points until the timeout, so it is opt-in and
-# capped by MAX_TOKENS to fail fast instead.
+# Reasoning length varies from 2K to 44K+ tokens on the same model, and it can
+# loop re-checking settled points until the timeout. It is therefore opt-in and
+# capped by MAX_TOKENS so a runaway run errors out quickly instead.
 THINKING="${LMS_REVIEW_THINKING:-false}"
 MAX_TOKENS="${LMS_REVIEW_MAX_TOKENS:-16384}"
 
@@ -49,8 +49,8 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     exit 1
 fi
 
-# Fail fast when the server is unreachable (Mac mini asleep, LM Studio not
-# running, Tailscale down) so the caller can skip instead of waiting. Any HTTP
+# Give up quickly when the Mac mini is asleep, LM Studio is not running, or
+# Tailscale is down, so the caller can move on instead of waiting. Any HTTP
 # status counts as reachable; probing before resolving the token avoids a
 # pointless secret-store unlock prompt when the server is down.
 HTTP_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "${BASE_URL}/models" 2>/dev/null || true)"
@@ -68,7 +68,8 @@ fi
 
 # The token and the diff are handed to curl/jq through files and stdin rather
 # than argv, where any local process could read them via `ps` for the whole
-# (up to TIMEOUT_SEC) request. mktemp -d creates the directory as 0700.
+# request, which can last up to TIMEOUT_SEC. mktemp -d creates the directory
+# as 0700.
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 HEADER_FILE="${WORK_DIR}/headers"
@@ -105,8 +106,8 @@ else
     exit 1
 fi
 
-# A missing merge base (shallow clone, unrelated histories) makes git diff fail;
-# surface it as an ERROR: line like every other failure path.
+# A missing merge base, as in a shallow clone or unrelated histories, makes
+# git diff fail; surface it as an ERROR: line like every other failure path.
 DIFF="$(git diff "${RESOLVED_BASE}...HEAD")" || {
     echo "ERROR: git diff against '${RESOLVED_BASE}' failed (no merge base?)" >&2
     exit 1
@@ -116,7 +117,8 @@ if [ -z "${DIFF}" ]; then
     exit 1
 fi
 # ${#DIFF} counts characters under a UTF-8 locale, which undercounts diffs
-# heavy in multibyte text (Japanese docs) by up to 3x; count raw bytes instead.
+# heavy in multibyte text such as Japanese docs by up to 3x; count raw bytes
+# instead.
 DIFF_BYTES="$(printf '%s' "${DIFF}" | LC_ALL=C wc -c | tr -d ' ')"
 if [ "${DIFF_BYTES}" -gt "${MAX_DIFF_BYTES}" ]; then
     echo "ERROR: diff is ${DIFF_BYTES} bytes (> ${MAX_DIFF_BYTES}); too large for the local model's context" >&2
