@@ -49,3 +49,8 @@ allowed-tools: Bash(bash *) BashOutput # space-delimited、command 名ベース
 - 外部依存は readme に記載済み: bash/Python skill 共通で `git`, `gh`, `jq`。Python skill は `uv run` で起動し PEP 723 inline script metadata で依存を宣言する(`cloudwatch-logs/cloudwatch_logs.py` 参照)。
 - 大きな diff を含む output(`auto-commit`, `pr`)はデフォルトで lockfile / 500 行超 / 50KB 超を除外する。
 - バックグラウンド対応 skill (`resolve-review`) は `--bg` 引数で `run_in_background=true` に切り替える方式。
+- LM Studio を呼ぶ skill は接続設定を以下の環境変数で受け取る(skill 間で共通)。
+  - `LM_API_URL`: サーバーのルート URL(`/v1` は含めない)。既定 `http://localhost:1234`
+  - `LM_API_TOKEN`: トークンそのもの
+  - `LM_API_TOKEN_COMMAND`: `LM_API_TOKEN` が空のとき、トークンを stdout に出すコマンドとして実行する。secret store 固有の処理(`op read` 等)は skill に書かない
+  - トークンの取得はサーバーの疎通確認の後に行う(サーバー停止時に secret store の unlock を促さないため)。実装は `lms-review/lms-review.sh` を参照
