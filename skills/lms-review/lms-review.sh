@@ -17,7 +17,7 @@ TOKEN="${LM_API_TOKEN:-}"
 
 # Tunables. Override via environment when needed.
 MODEL="${LMS_REVIEW_MODEL:-qwen/qwen3.6-35b-a3b}"       # MoE is ~6x faster than dense 27B; check keys with `lms ls`
-TIMEOUT_SEC="${LMS_REVIEW_TIMEOUT:-900}"                # reasoning can run 10K+ tokens; be generous
+TIMEOUT_SEC="${LMS_REVIEW_TIMEOUT:-900}"                # generous for LMS_REVIEW_THINKING=true, whose reasoning can run 10K+ tokens
 TTL_SEC="${LMS_REVIEW_TTL:-600}"                        # unload 10 min after the last request (JIT only)
 MAX_DIFF_BYTES="${LMS_REVIEW_MAX_DIFF_BYTES:-60000}"    # keep prompt + output within a 32K context
 # Reasoning length varies from 2K to 44K+ tokens on the same model, and it can
