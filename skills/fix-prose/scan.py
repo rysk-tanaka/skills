@@ -9,6 +9,7 @@ This script only DETECTS. The actual rewriting is performed by the agent
 following SKILL.md, which can judge contextual / density cases.
 
 Usage:
+    uv run scan.py                      # files changed since branching from main + untracked
     uv run scan.py <path> [<path> ...]
     uv run scan.py src/ docs/ --profile docs
     uv run scan.py README.md --rules ./rules.toml
@@ -20,7 +21,9 @@ Usage:
 # ///
 
 import json
+import os
 import re
+import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -53,6 +56,11 @@ VALID_PROFILES = {"technical", "docs", "strict"}
 # Skip text files larger than this to avoid loading huge logs / generated files
 # into memory (binaries are already excluded via SKIP_EXTS).
 MAX_FILE_BYTES = 2 * 1024 * 1024
+
+# Branch whose fork point is diffed against when no paths are given. The fork
+# point is the merge-base of HEAD with whichever of this branch and
+# origin/<branch> exist.
+DEFAULT_DIFF_BASE = "main"
 
 EN_WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
 
@@ -413,6 +421,100 @@ def discover(paths: list[Path]) -> tuple[list[Path], list[Path]]:
     return deduped, missing
 
 
+def changed_files(base: str) -> tuple[list[Path], list[dict]]:
+    """Return files changed on this branch: the diff from the merge-base with
+    `base` to the working tree, plus untracked files.
+
+    Diffing from the merge-base rather than `base` itself keeps files changed
+    only on `base` after branching out of scope, so they are not rewritten.
+    Whichever of `base` and `origin/<base>` exist feed the merge-base.
+    Typically the result is the fork point from whichever ref the branch was
+    cut from (or rebased onto), so an outdated local `base` does not pull in
+    commits taken from upstream by a rebase onto origin or GitHub's "Update
+    branch". When there are multiple best common ancestors, e.g. HEAD contains
+    both tips of a diverged `base` / `origin/<base>` or the history has a
+    criss-cross merge, git returns one of them arbitrarily.
+    Untracked files are added so new docs are scanned before `git add`.
+    Deleted files are excluded since there is nothing left to scan.
+
+    Symlinks and directories such as submodules and nested repos are dropped:
+    walking or following them would rewrite files outside this branch's
+    changes, even in other repositories. Files under SKIP_DIRS (e.g. an
+    untracked, unignored node_modules/) are dropped too, matching what
+    discover() prunes when a directory is passed explicitly; they are reported
+    once per directory, since ls-files lists untracked directories file by
+    file. Exclusions are returned as (path, reason) records so the caller can
+    report them instead of claiming nothing changed. Paths are collected
+    relative to the repo root, then re-rooted relative to the cwd to keep
+    output paths short and valid when invoked from a subdirectory.
+
+    Raises RuntimeError when neither ref exists, HEAD shares no history with
+    them, or git is missing or fails.
+    """
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args], capture_output=True, text=True, check=True).stdout
+
+    def ref_exists(ref: str) -> bool:
+        return subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+            capture_output=True).returncode == 0
+
+    try:
+        top = Path(git("rev-parse", "--show-toplevel").strip())
+        refs = [r for r in (base, f"origin/{base}") if ref_exists(r)]
+        if not refs:
+            raise RuntimeError(f"neither {base} nor origin/{base} exists")
+        # merge-base exits 1 with empty stderr when there is no common ancestor,
+        # which would otherwise surface as a bare exit code.
+        merge_base = subprocess.run(
+            ["git", "merge-base", "HEAD", *refs], capture_output=True, text=True)
+        is_unrelated_history = merge_base.returncode == 1 and not merge_base.stderr.strip()
+        if is_unrelated_history:
+            raise RuntimeError(
+                f"HEAD has no common ancestor with {' / '.join(refs)} "
+                "(unrelated history or shallow clone)")
+        if merge_base.returncode != 0:
+            raise subprocess.CalledProcessError(
+                merge_base.returncode, merge_base.args, stderr=merge_base.stderr)
+        fork_point = merge_base.stdout.strip()
+        # -z avoids git's C-style quoting of non-ASCII paths. --no-relative
+        # overrides a user's diff.relative=true, which would make paths
+        # cwd-relative and break the join with `top` below.
+        diffed = git("diff", "--name-only", "-z", "--no-relative", "--diff-filter=d", fork_point)
+        # ls-files lists only under the cwd, so run it from the repo root.
+        untracked = git("-C", str(top), "ls-files", "-z", "--others", "--exclude-standard")
+    except FileNotFoundError:
+        raise RuntimeError("git not found") from None
+    except subprocess.CalledProcessError as err:
+        detail = err.stderr.strip() or f"exited with {err.returncode}"
+        raise RuntimeError(f"`{' '.join(err.cmd)}` failed: {detail}") from None
+
+    names = sorted({n for n in (diffed + untracked).split("\0") if n})
+    files: list[Path] = []
+    excluded: list[dict] = []
+    skipped_dir_counts: dict[Path, int] = {}
+    for name in names:
+        path = top / name
+        rel = Path(os.path.relpath(path))
+        parts = Path(name).parts
+        skip_idx = next((i for i, d in enumerate(parts[:-1]) if d in SKIP_DIRS), None)
+        if skip_idx is not None:
+            skipped_root = Path(*parts[:skip_idx + 1])
+            skipped_dir_counts[skipped_root] = skipped_dir_counts.get(skipped_root, 0) + 1
+        elif path.is_symlink():
+            excluded.append({"path": str(rel), "reason": "symlink (not followed)"})
+        elif path.is_dir():
+            excluded.append({"path": str(rel), "reason": "directory (submodule / nested repo)"})
+        else:
+            files.append(rel)
+    for root, count in skipped_dir_counts.items():
+        excluded.append({
+            "path": os.path.relpath(top / root),
+            "reason": f"inside skipped directory {root.name} ({count} files)"})
+    return files, excluded
+
+
 # =============================================================================
 # CLI
 # =============================================================================
@@ -422,7 +524,9 @@ app = typer.Typer(add_completion=False)
 
 @app.command()
 def main(
-    paths: list[Path] = typer.Argument(..., help="Files or directories to scan"),
+    paths: list[Path] | None = typer.Argument(
+        None,
+        help=f"Files or directories to scan (default: files changed vs {DEFAULT_DIFF_BASE})"),
     rules_path: Path = typer.Option(
         Path(__file__).parent / "rules.toml", "--rules", help="Rule dictionary path"),
     profile: str = typer.Option(
@@ -444,11 +548,26 @@ def main(
             file=sys.stderr)
         raise typer.Exit(1)
 
+    excluded: list[dict] = []
+    if not paths:
+        try:
+            paths, excluded = changed_files(DEFAULT_DIFF_BASE)
+        except RuntimeError as err:
+            print(f"Error: failed to list files changed vs {DEFAULT_DIFF_BASE}: {err}; "
+                  "pass paths explicitly", file=sys.stderr)
+            raise typer.Exit(1) from None
+        if not paths:
+            print(f"Error: no scannable files changed vs {DEFAULT_DIFF_BASE}", file=sys.stderr)
+            for e in excluded:
+                print(f"  excluded: {e['path']} ({e['reason']})", file=sys.stderr)
+            raise typer.Exit(1)
+
     files, missing = discover(paths)
 
     all_findings: list[Finding] = []
     all_density: list[dict] = []
-    skipped: list[dict] = [{"path": str(p), "reason": "path not found"} for p in missing]
+    skipped: list[dict] = excluded + [
+        {"path": str(p), "reason": "path not found"} for p in missing]
     scanned = 0
 
     for fp in files:
