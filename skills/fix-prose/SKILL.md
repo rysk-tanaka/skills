@@ -19,6 +19,10 @@ AI らしい定型語、過剰敬語、冗長表現、ヘッジなど、自分�
 `$ARGUMENTS` に走査対象のパスとオプションが渡される。
 
 - パスはファイル / ディレクトリを複数指定可（ディレクトリは再帰）
+- パス省略時は main から分岐した後の変更ファイルと未追跡ファイルが対象
+  - 分岐点は `main` と `origin/main` のうち存在するものと HEAD の merge-base。どちらもなければエラー終了
+  - 分岐点からの差分は未コミットの変更を含み、削除済みを除く
+  - サブモジュール・入れ子のリポジトリ・シンボリックリンク・`node_modules` 等の除外ディレクトリ配下は走査せず、`files_skipped` に理由付きで載る
 - `--profile <name>` で contextual 語の許容範囲を切り替え（省略時は `rules.toml` の `default_profile`）
   - `technical` … コード / 技術文書向け。技術的に正当な語（robust 等）は許容
   - `docs` … 一般ドキュメント向け
@@ -26,6 +30,8 @@ AI らしい定型語、過剰敬語、冗長表現、ヘッジなど、自分�
 
 例
 
+- `/fix-prose` → main との差分ファイルを technical で走査・修正
+- `/fix-prose --profile docs` → main との差分ファイルを docs で走査・修正
 - `/fix-prose src/` → src 配下を technical で走査・修正
 - `/fix-prose README.md docs/ --profile docs`
 - `/fix-prose .` → カレント以下すべて
@@ -36,10 +42,12 @@ AI らしい定型語、過剰敬語、冗長表現、ヘッジなど、自分�
 
 `uv run ${CLAUDE_SKILL_DIR}/scan.py $ARGUMENTS` を実行する。
 
-- `$ARGUMENTS` が空の場合は、対象が不明なのでユーザーにパスを尋ねる
+- `$ARGUMENTS` にパスがない場合は、スクリプトが main との差分ファイルを対象にする
+  - `main` / `origin/main` がない、共通祖先がないなどの理由で `failed to list files changed vs main` で終了した場合は、ユーザーにパスを尋ねて再実行する
+  - 差分がない、または全件が除外されたために `no scannable files changed vs main` で終了した場合は、JSON は出ないため、stderr に列挙された除外パスとともに報告して終了する
 - パスにスペースや glob 文字（`*` `?` 等）を含む場合は、Bash コマンド構築時に各パスを個別にダブルクォートで囲む（`$ARGUMENTS` 全体を一括クォートするとフラグや複数パスの分割が壊れる）
 - 依存（pygments, typer）は PEP 723 により `uv run` が自動解決する
-- 非ゼロ終了した場合は stderr のエラーをユーザーに報告して終了
+- 上記以外で非ゼロ終了した場合は stderr のエラーをユーザーに報告して終了
 
 ### 2. 出力（JSON）の解析
 

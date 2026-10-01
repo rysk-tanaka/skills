@@ -49,7 +49,7 @@ skill 別の外部依存。
 - `drawio`, `drawio-aws`: draw.io デスクトップアプリ
 - `cloudwatch-logs`: `uv`, AWS 認証情報
 - `design-doc-yaml`: `uv`
-- `fix-prose`: `uv`
+- `fix-prose`: `uv`, `git` (パス省略時の差分取得)
 
 ## 権限
 
