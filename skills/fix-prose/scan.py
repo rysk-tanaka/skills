@@ -221,10 +221,14 @@ def strip_md_code(text: str) -> str:
     A fence (``` or ~~~, 3+ markers) is closed only by the same marker run, so a
     ``` block containing ~~~ is not cut short; an unclosed fence runs to EOF.
     Newlines are preserved so line numbers stay aligned.
+    Link destinations are dropped too: a `[text](url)` URL is never prose, yet
+    its parentheses would otherwise trip the paren_aside pattern. One level of
+    nested parens is allowed for URLs like `.../wiki/Foo_(bar)`.
     """
     fence = re.compile(r"(?P<fence>`{3,}|~{3,}).*?(?:(?P=fence)|\Z)", re.DOTALL)
     text = fence.sub(_blank_keep_newlines, text)
     text = re.sub(r"`[^`\n]*`", " ", text)
+    text = re.sub(r"\]\((?:[^()\n]|\([^()\n]*\))*\)", "]", text)
     return text
 
 
