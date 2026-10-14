@@ -43,7 +43,7 @@ gh skill install rysk-tanaka/skills auto-commit --agent claude-code --scope user
 skill 別の外部依存。
 
 - `auto-commit`, `await-ci`, `pr`, `resolve-review`, `suggest-branch`: `git`, `gh`, `jq`
-- `review-router`: `git`, `jq` (差分解析)。レビュー本体は pr-review-toolkit プラグインのサブエージェント。`--agy` 指定時は `agy` CLI、`--lms` 指定時は `lms-review` skill
+- `review-router`: `git`, `jq` (差分解析)。レビュー本体は pr-review-toolkit プラグインのサブエージェントで、Claude Code の Workflow ツールがあれば同梱の `review.workflow.js` で並行レビューと検証を回す。`--agy` 指定時は `agy` CLI、`--lms` 指定時は `lms-review` skill
 - `lms-review`: `git`, `curl`, `jq`, `perl`, LM Studio サーバー。`review-router` は同梱の script を呼ぶため、ローカル LLM レビューを使うなら併せてインストールする
 - `lms-rescue`: `git`, `curl`, `jq`, `codex` CLI, LM Studio サーバー
 - `drawio`, `drawio-aws`: draw.io デスクトップアプリ
