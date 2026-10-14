@@ -47,18 +47,19 @@ JSON の構造。
     "tests": true,
     "types": false,
     "error_handling": true,
-    "comments_docs": false,
+    "comments_docs": true,
     "migrations": false,
     "security": false,
     "concurrency": false
   },
   "tier": "medium",
-  "reviewers": ["code-reviewer", "silent-failure-hunter"],
+  "reviewers": ["code-reviewer", "silent-failure-hunter", "comment-analyzer"],
   "history": {
     "reason": "history",
     "omitted": ["pr-test-analyzer"],
+    "revived": ["comment-analyzer"],
     "previous_runs": 2,
-    "state_file": "/path/to/repo/.git/review-router/feat__x.json"
+    "state_file": "/path/to/repo/.git/review-router/feat%2Fx.json"
   },
   "options": {
     "agy": false,
@@ -88,16 +89,20 @@ agy CLI とローカル LLM は tier に関係なく、`options.agy` / `options.
 - `error_handling`: `pr-review-toolkit:silent-failure-hunter`
 - `comments_docs`: `pr-review-toolkit:comment-analyzer`
 
-`migrations` / `security` / `concurrency` には専用サブエージェントが無い。これらは tier 判定（true なら high）に効くが、専門レビューは常時起動の `code-reviewer` が一般観点としてカバーする。専用エージェントが必要になったら analyze.sh のルーティングとこの表に追加する。
+`migrations` / `security` / `concurrency` には専用サブエージェントが無い。これらは tier 判定（true なら high）に効くが、専門レビューは常時起動の `code-reviewer` が一般観点としてカバーする。専用エージェントが必要になったら、analyze.sh のルーティング、観点との対応（`reviewer_dim` と `dim_changed_since`）、この表に追加する。対応が抜けると、履歴で外したあと担当の観点が変わっても復帰しない。
 
 ### レビュー履歴による絞り込み
 
-全サブエージェントを起動するのはブランチごとの初回だけにし、2 回目以降は前回役に立ったものに絞る。空振りするレビュアーの起動を減らすため。`history.reason` が判断の理由を表す。
+全サブエージェントを起動するのはブランチごとの初回だけにし、2 回目以降は前回の実行で役に立ったものに絞る。空振りするレビュアーの起動を減らすため。`history.reason` が判断の理由を表す。
 
-- `first_run` / `base_changed` / `detached_head` / `full` - ルーティングした全サブエージェントを起動する。それぞれ、履歴が無い、前回と base が違う、detached HEAD で履歴を持てない、`--full` 指定
-- `history` - 前回の結果で絞り込んだ。起動するのは `code-reviewer`（一般観点の土台として常時）、前回の採用数が 1 件以上のもの（Suggestion を含む）、このブランチで一度も結果を返していないもの（新たに true になった観点など）。外したものは `history.omitted` に入る
+- `first_run` / `base_changed` / `detached_head` / `full` / `history_unavailable` - ルーティングした全サブエージェントを起動する。それぞれ、履歴が無い、前回と base が違う、detached HEAD で履歴を持てない、`--full` 指定、履歴を読めない
+- `history` - 前回までの結果で絞り込んだ。起動するのは次のいずれかに当たるもの。外したものは `history.omitted` に入る
+  - `code-reviewer`（一般観点の土台として常時）
+  - 最後に起動した実行で採用数が 1 件以上だったもの（Suggestion を含む）
+  - このブランチで一度も結果を返していないもの（新たに true になった観点など）
+  - 外していたが、最後に起動したとき以降のコミットで担当の観点（テスト・型・エラー処理・コメント）に変更が入ったもの、または rebase 等で最後に起動したときのコミットが履歴から外れたもの。`history.revived` に入る
 
-履歴は git 管理外の `history.state_file`（リポジトリの git ディレクトリ内、worktree 間で共有）に、各ラウンドの集約後に記録する（4 章）。
+履歴は git 管理外の `history.state_file`（リポジトリの git ディレクトリ内、worktree 間で共有）に、実行ごとに 1 回目のレビューの集約後に記録する（4 章）。
 
 判定結果（tier・起動するサブエージェント、履歴で外したもの、agy CLI・ローカル LLM を使うか）を実行前にユーザーへ一行で示す。
 
@@ -193,7 +198,7 @@ Workflow の `findings` は検証と正規化が済んでいるので、その�
 - Important - 直すべき（重要だが非ブロッカー）
 - Suggestion - 任意（軽微・スタイル）
 
-集約が済んだら、pr-review-toolkit サブエージェントの結果をブランチのレビュー履歴に記録する。次回の起動対象（2 章）を決めるため、1 回目・再レビューの各ラウンドで必ず行う。Workflow の `stats` と `skipped` をそのまま渡し、`unverified` を自分で裏取りして成立した指摘があれば、その `source` の `adopted` に 1 件ずつ足してから渡す。
+1 回目のレビューの集約が済んだら、pr-review-toolkit サブエージェントの結果をブランチのレビュー履歴に記録する。次回の起動対象（2 章）を決めるため。6 章の再レビューでは記録しない。再レビューは修正の確認が目的で、修正が正しければ指摘 0 件になるため、記録すると実際に役立ったレビュアーが空振り扱いになる。Workflow の `stats` と `skipped` をそのまま渡し、`unverified` を自分で裏取りして成立した指摘があれば、その `source` の `adopted` に 1 件ずつ足してから渡す。
 
 ```bash
 bash ${CLAUDE_SKILL_DIR}/record-state.sh "<base>" <<'STATE_JSON'
@@ -233,7 +238,7 @@ Must-Fix と Important が 0 件になるまで、ユーザーの承認を待た
 1. Must-Fix と Important を修正する。修正は指摘箇所のみ最小限に留め、Suggestion と、停止条件に挙げた設計判断を要する指摘には手を付けない
 2. 修正はコミットしない。コミットするかどうかはユーザーが決める。新規ファイルを作った場合は `git add -N <file>` で diff に載せる
 3. 3 章の Workflow を再び呼んで再レビューする。スクリプトは 1 回目の結果が返した `scriptPath` で渡す。`args` は 1 回目から次の 3 つを変える
-   - `reviewers`: 前ラウンドで結果を返したレビュアーのうち、`code-reviewer` と、`stats` の `adopted` が 1 件以上のもの。2 章の履歴による絞り込みと同じ考え方で、空振りしたレビュアーは再レビューでも起動しない。前ラウンドの `skipped` は入れない。プラグインが無い等で起動できないレビュアーを入れたままにすると、毎回 `skipped` になり再レビューが必ず不完全になるため
+   - `reviewers`: 1 回目のレビュアーから、1 回目の `skipped` を除く。修正が各観点に新しい問題を持ち込んでいないかを、1 回目と同じ顔ぶれで確かめるため（履歴による絞り込みは実行の単位で行い、ループ内では絞らない）。プラグインが無い等で起動できないレビュアーを入れたままにすると、毎回 `skipped` になり再レビューが必ず不完全になる
    - `diff_cmd`: `git merge-base <base> HEAD` で得たコミット ID を使い `git diff <merge-base>` とする。コミット済みの変更に未コミットの修正を加えた全体を見せるため
    - `previous`: 前ラウンドまでの指摘を `{"status", "file", "line", "summary"}` の配列で渡す。`status` は修正した指摘が `fixed`（出どころが agy CLI・ローカル LLM でも同じ）、設計判断のため残した指摘が `kept`、Suggestion が `suggestion`、却下した指摘が `rejected`。`rejected` には Workflow の `rejected` に入った指摘に加え、4 章の集約で自分で裏取りして却下した指摘（`unverified` や agy CLI・ローカル LLM の指摘）も含める。スクリプトは `fixed` の修正が正しいかを確認させ、それ以外は繰り返させない。再報告された場合も、検証役が `previous` の状態に合わせて扱いを揃える
 4. 4 章と同じ基準で集約し、Must-Fix・Important の件数を確認する。再レビューで `skipped` が空でない場合、そのラウンドは一部のレビュアーが確認していないため、「レビュー不完全」として止める。1 回目のレビューでの `skipped` は、プラグインが無い等で続けても支障がないため報告するだけにする
