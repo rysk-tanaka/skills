@@ -3,7 +3,7 @@ name: review-router
 description: 差分を分析して規模・観点に応じたレビューを自動振り分けし、Must-Fix・Important を未コミットのまま自動修正して再レビューする (user)
 license: MIT
 argument-hint: "[base-branch] [--agy] [--lms]"
-allowed-tools: Bash(bash *) Bash(git *) BashOutput Task Edit Write
+allowed-tools: Bash(bash *) Bash(git status *) Bash(git diff *) Bash(git merge-base *) Bash(git add -N *) BashOutput Task Edit Write
 ---
 
 # レビュー・ルーター
@@ -185,4 +185,4 @@ agy CLI とローカル LLM はコミット済みの差分しか見ないため�
 
 - 停止理由と、残った指摘（あれば理由付き）
 - ラウンドごとの修正内容（file:line と一言）
-- `git diff --stat` の結果と、修正が未コミットである旨
+- `git diff --stat` の結果と、修正が未コミットである旨。`git add -N` したファイルがあれば、コミットしない場合も intent-to-add のままインデックスに残る旨を添える
