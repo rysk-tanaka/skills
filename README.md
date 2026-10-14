@@ -23,7 +23,7 @@ gh skill install rysk-tanaka/skills auto-commit --agent claude-code --scope user
 | `pr` | user | ブランチ差分を分析し、リポジトリの template に従って pull request を作成 |
 | `resolve-review` | user | PR の未解決レビューコメントを取得・分類(CI 待機 helper を同梱) |
 | `suggest-branch` | user | working tree の状態からブランチ名候補を提案 |
-| `review-router` | user | 差分を分析し規模・観点から tier を判定して適切なレビューを自動振り分け |
+| `review-router` | user | 差分を分析し規模・観点から tier を判定して適切なレビューを自動振り分けし、Must-Fix・Important を自動修正して再レビュー |
 | `lms-review` | user | LM Studio のローカル LLM でブランチ差分をレビュー |
 | `lms-rescue` | user | LM Studio のローカル LLM に調査・修正を委任(Codex CLI 経由) |
 | `drawio` | project | `.drawio` 図表を生成、PNG / SVG / PDF へエクスポート可 |
