@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Analyze the diff against a base branch and classify it into a review tier.
-# Emits a single JSON object on stdout describing size, touched dimensions, and tier.
+# Emits a single JSON object on stdout describing size, touched dimensions, tier, and the
+# reviewers to run (narrowed by this branch's review history unless --full is given).
 set -euo pipefail
 
 # Tunable thresholds. Adjust here to change routing aggressiveness.
@@ -16,12 +17,14 @@ read -r -a TOKENS <<<"$*"
 BASE_BRANCH=""
 OPT_AGY=false
 OPT_LMS=false
+OPT_FULL=false
 for token in "${TOKENS[@]+"${TOKENS[@]}"}"; do
     case "${token}" in
         --agy) OPT_AGY=true ;;
         --lms) OPT_LMS=true ;;
+        --full) OPT_FULL=true ;;
         -*)
-            echo "ERROR: unknown option '${token}' (supported: --agy, --lms)" >&2
+            echo "ERROR: unknown option '${token}' (supported: --agy, --lms, --full)" >&2
             exit 1
             ;;
         *)
@@ -147,6 +150,52 @@ else
     tier=medium
 fi
 
+# Reviewers routed by tier and dimensions (pr-review-toolkit agent names without the prefix).
+routed=(code-reviewer)
+if [[ "${tier}" != low ]]; then
+    if [[ "${dim_tests}" == true ]]; then routed+=(pr-test-analyzer); fi
+    if [[ "${dim_types}" == true ]]; then routed+=(type-design-analyzer); fi
+    if [[ "${dim_error}" == true ]]; then routed+=(silent-failure-hunter); fi
+    if [[ "${dim_comments}" == true ]]; then routed+=(comment-analyzer); fi
+fi
+routed_json=$(printf '%s\n' "${routed[@]}" | jq -R . | jq -c -s .)
+
+# Review history for this branch, written by record-state.sh after each review round.
+STATE_FILE=$(bash "$(dirname "${BASH_SOURCE[0]}")/record-state.sh" --path)
+state=null
+if [[ -n "${STATE_FILE}" && -f "${STATE_FILE}" ]]; then
+    if ! state=$(jq -c 'if type == "object" then . else error("not an object") end' "${STATE_FILE}" 2>/dev/null); then
+        echo "WARN: ignoring unreadable review history ${STATE_FILE}" >&2
+        state=null
+    fi
+fi
+
+# Run every routed reviewer on the first review of a branch. Afterwards keep code-reviewer
+# as the general baseline, plus reviewers whose findings were adopted last time and ones
+# that have never run on this branch (e.g. a dimension that became true since).
+selection=$(jq -n -c \
+    --argjson routed "${routed_json}" \
+    --argjson state "${state}" \
+    --argjson full "${OPT_FULL}" \
+    --arg base "${RESOLVED_BASE}" \
+    --arg state_file "${STATE_FILE}" \
+    'if $full then {reviewers: $routed, reason: "full"}
+    elif $state_file == "" then {reviewers: $routed, reason: "detached_head"}
+    elif $state == null then {reviewers: $routed, reason: "first_run"}
+    elif $state.base != $base then {reviewers: $routed, reason: "base_changed"}
+    else
+        ($state.reviewers // {}) as $known
+        | {
+            reviewers: [$routed[] | select(. == "code-reviewer" or $known[.] == null or ($known[.].last_adopted // 0) >= 1)],
+            reason: "history"
+        }
+    end
+    | . + {
+        omitted: ($routed - .reviewers),
+        previous_runs: (if .reason == "history" then $state.runs // 0 else 0 end),
+        state_file: $state_file
+    }')
+
 jq -n \
     --arg base "${RESOLVED_BASE}" \
     --argjson files "${files_changed}" \
@@ -163,6 +212,8 @@ jq -n \
     --arg tier "${tier}" \
     --argjson agy "${OPT_AGY}" \
     --argjson lms "${OPT_LMS}" \
+    --argjson full "${OPT_FULL}" \
+    --argjson selection "${selection}" \
     '{
         base: $base,
         files_changed: $files,
@@ -179,8 +230,11 @@ jq -n \
             concurrency: $concurrency
         },
         tier: $tier,
+        reviewers: $selection.reviewers,
+        history: ($selection | del(.reviewers)),
         options: {
             agy: $agy,
-            lms: $lms
+            lms: $lms,
+            full: $full
         }
     }'

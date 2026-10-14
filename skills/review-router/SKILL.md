@@ -2,7 +2,7 @@
 name: review-router
 description: 差分を分析して規模・観点に応じたレビューを自動振り分けし、Must-Fix・Important を未コミットのまま自動修正して再レビューする (user)
 license: MIT
-argument-hint: "[base-branch] [--agy] [--lms]"
+argument-hint: "[base-branch] [--agy] [--lms] [--full]"
 allowed-tools: Bash(bash *) Bash(git status *) Bash(git diff *) Bash(git merge-base *) Bash(git add -N *) BashOutput Read Task Workflow Edit Write
 ---
 
@@ -16,6 +16,7 @@ allowed-tools: Bash(bash *) Bash(git status *) Bash(git diff *) Bash(git merge-b
 
 - `--agy` - agy CLI（Gemini）による独立レビューを追加で実行する
 - `--lms` - ローカル LLM による独立レビューを追加で実行する
+- `--full` - ブランチのレビュー履歴を無視し、ルーティングしたサブエージェントをすべて起動する
 
 agy CLI とローカル LLM は誤検出が多いため、指定したときだけ動かす。
 
@@ -24,6 +25,7 @@ agy CLI とローカル LLM は誤検出が多いため、指定したときだ�
 - `/review-router` → main との差分
 - `/review-router develop` → develop との差分
 - `/review-router main --agy --lms` → main との差分に agy CLI とローカル LLM のレビューを加える
+- `/review-router main --full` → 前回の結果に関係なく、全サブエージェントでレビューし直す
 
 ## 1. 差分の分析
 
@@ -51,16 +53,24 @@ JSON の構造。
     "concurrency": false
   },
   "tier": "medium",
+  "reviewers": ["code-reviewer", "silent-failure-hunter"],
+  "history": {
+    "reason": "history",
+    "omitted": ["pr-test-analyzer"],
+    "previous_runs": 2,
+    "state_file": "/path/to/repo/.git/review-router/feat__x.json"
+  },
   "options": {
     "agy": false,
-    "lms": false
+    "lms": false,
+    "full": false
   }
 }
 ```
 
 ## 2. ルーティングの決定
 
-`tier` と `dimensions` から実行するレビューを決める。
+起動する pr-review-toolkit サブエージェントは、JSON の `reviewers` をそのまま使う。analyze.sh が `tier` と `dimensions` から下表でルーティングし、さらにブランチのレビュー履歴で絞り込んだ結果。
 
 | tier | 自動実行 | 提案のみ |
 | --- | --- | --- |
@@ -78,9 +88,18 @@ agy CLI とローカル LLM は tier に関係なく、`options.agy` / `options.
 - `error_handling`: `pr-review-toolkit:silent-failure-hunter`
 - `comments_docs`: `pr-review-toolkit:comment-analyzer`
 
-`migrations` / `security` / `concurrency` には専用サブエージェントが無い。これらは tier 判定（true なら high）に効くが、専門レビューは常時起動の `code-reviewer` が一般観点としてカバーする。専用エージェントが必要になったらこの表に追加する。
+`migrations` / `security` / `concurrency` には専用サブエージェントが無い。これらは tier 判定（true なら high）に効くが、専門レビューは常時起動の `code-reviewer` が一般観点としてカバーする。専用エージェントが必要になったら analyze.sh のルーティングとこの表に追加する。
 
-判定結果（tier・起動するレビュー一覧、agy CLI・ローカル LLM を使うか）を実行前にユーザーへ一行で示す。
+### レビュー履歴による絞り込み
+
+全サブエージェントを起動するのはブランチごとの初回だけにし、2 回目以降は前回役に立ったものに絞る。空振りするレビュアーの起動を減らすため。`history.reason` が判断の理由を表す。
+
+- `first_run` / `base_changed` / `detached_head` / `full` - ルーティングした全サブエージェントを起動する。それぞれ、履歴が無い、前回と base が違う、detached HEAD で履歴を持てない、`--full` 指定
+- `history` - 前回の結果で絞り込んだ。起動するのは `code-reviewer`（一般観点の土台として常時）、前回の採用数が 1 件以上のもの（Suggestion を含む）、このブランチで一度も結果を返していないもの（新たに true になった観点など）。外したものは `history.omitted` に入る
+
+履歴は git 管理外の `history.state_file`（リポジトリの git ディレクトリ内、worktree 間で共有）に、各ラウンドの集約後に記録する（4 章）。
+
+判定結果（tier・起動するサブエージェント、履歴で外したもの、agy CLI・ローカル LLM を使うか）を実行前にユーザーへ一行で示す。
 
 ## 3. レビューの実行
 
@@ -105,7 +124,7 @@ agy CLI とローカル LLM は tier に関係なく、`options.agy` / `options.
 
 - `base` と `tier` は JSON の値をそのまま渡す
 - `diff_cmd` は 1 回目は `git diff <base>...HEAD`。再レビューでの値は 6 章を参照
-- `reviewers` は 2 章で選んだサブエージェントの `pr-review-toolkit:` を除いた名前
+- `reviewers` は JSON の `reviewers` をそのまま渡す
 - `context` は差分から読み取った変更の目的・背景の 1〜2 文
 - `previous` は 1 回目は空配列。再レビューでの値は 6 章を参照
 
@@ -126,7 +145,7 @@ Workflow はバックグラウンドで動き、完了すると通知が届く�
 
 `args` が不正な場合と、全レビュアーが結果を返さなかった場合、スクリプトはエラーで終わる。このときはそのラウンドのレビューが行われなかったものとして扱い、指摘 0 件とは見なさない。エラー内容を報告し、修正ループに入っている場合はそこで止める。
 
-`Workflow` ツールが使えない環境では、従来どおり `Task` ツールでサブエージェントを並行起動する（1 メッセージに複数 tool 呼び出し）。指示は「`diff_cmd` の範囲に限定する」「confidence 80 以上だけ報告する」「各指摘に file:line と確信度を含める」の 3 点。6 章の再レビューでは、`args` の `diff_cmd` と `previous` に当たる内容（範囲と、前ラウンドまでの指摘とその状態、`fixed` は修正が正しいかを確認し、それ以外は繰り返さないこと）をプロンプトに含める。この経路では 4 章の集約で、各指摘をコードと突き合わせて裏取りする。
+`Workflow` ツールが使えない環境では、従来どおり `Task` ツールでサブエージェントを並行起動する（1 メッセージに複数 tool 呼び出し）。指示は「`diff_cmd` の範囲に限定する」「confidence 80 以上だけ報告する」「各指摘に file:line と確信度を含める」の 3 点。6 章の再レビューでは、`args` の `diff_cmd` と `previous` に当たる内容（範囲と、前ラウンドまでの指摘とその状態、`fixed` は修正が正しいかを確認し、それ以外は繰り返さないこと）をプロンプトに含める。この経路では 4 章の集約で、各指摘をコードと突き合わせて裏取りし、`stats` と `skipped` に当たるもの（レビュアーごとの報告数・裏取りで成立した数、結果を返さなかったレビュアー）を自分でまとめる。
 
 ### agy CLI（`options.agy` が true のときのみ）
 
@@ -174,6 +193,18 @@ Workflow の `findings` は検証と正規化が済んでいるので、その�
 - Important - 直すべき（重要だが非ブロッカー）
 - Suggestion - 任意（軽微・スタイル）
 
+集約が済んだら、pr-review-toolkit サブエージェントの結果をブランチのレビュー履歴に記録する。次回の起動対象（2 章）を決めるため、1 回目・再レビューの各ラウンドで必ず行う。Workflow の `stats` と `skipped` をそのまま渡し、`unverified` を自分で裏取りして成立した指摘があれば、その `source` の `adopted` に 1 件ずつ足してから渡す。
+
+```bash
+bash ${CLAUDE_SKILL_DIR}/record-state.sh "<base>" <<'STATE_JSON'
+{"stats": <stats>, "skipped": <skipped>}
+STATE_JSON
+```
+
+- `<base>` は JSON の `base` をそのまま渡す。前回と違う base で記録すると、それまでの履歴は捨てて新しく始める
+- `skipped` のレビュアーは記録を更新しない。一時的な失敗で過去の実績を消さないため
+- detached HEAD では警告を出して何もしない。非ゼロで終了した場合は、そのエラーを報告するがレビューの流れは止めない
+
 報告の方針。
 
 - カテゴリごとにグループ化し、各指摘に file:line を付ける
@@ -202,7 +233,7 @@ Must-Fix と Important が 0 件になるまで、ユーザーの承認を待た
 1. Must-Fix と Important を修正する。修正は指摘箇所のみ最小限に留め、Suggestion と、停止条件に挙げた設計判断を要する指摘には手を付けない
 2. 修正はコミットしない。コミットするかどうかはユーザーが決める。新規ファイルを作った場合は `git add -N <file>` で diff に載せる
 3. 3 章の Workflow を再び呼んで再レビューする。スクリプトは 1 回目の結果が返した `scriptPath` で渡す。`args` は 1 回目から次の 3 つを変える
-   - `reviewers`: 1 回目のレビュアーから、1 回目の `skipped` を除く。プラグインが無い等で起動できないレビュアーを入れたままにすると、毎回 `skipped` になり再レビューが必ず不完全になるため
+   - `reviewers`: 前ラウンドで結果を返したレビュアーのうち、`code-reviewer` と、`stats` の `adopted` が 1 件以上のもの。2 章の履歴による絞り込みと同じ考え方で、空振りしたレビュアーは再レビューでも起動しない。前ラウンドの `skipped` は入れない。プラグインが無い等で起動できないレビュアーを入れたままにすると、毎回 `skipped` になり再レビューが必ず不完全になるため
    - `diff_cmd`: `git merge-base <base> HEAD` で得たコミット ID を使い `git diff <merge-base>` とする。コミット済みの変更に未コミットの修正を加えた全体を見せるため
    - `previous`: 前ラウンドまでの指摘を `{"status", "file", "line", "summary"}` の配列で渡す。`status` は修正した指摘が `fixed`（出どころが agy CLI・ローカル LLM でも同じ）、設計判断のため残した指摘が `kept`、Suggestion が `suggestion`、却下した指摘が `rejected`。`rejected` には Workflow の `rejected` に入った指摘に加え、4 章の集約で自分で裏取りして却下した指摘（`unverified` や agy CLI・ローカル LLM の指摘）も含める。スクリプトは `fixed` の修正が正しいかを確認させ、それ以外は繰り返させない。再報告された場合も、検証役が `previous` の状態に合わせて扱いを揃える
 4. 4 章と同じ基準で集約し、Must-Fix・Important の件数を確認する。再レビューで `skipped` が空でない場合、そのラウンドは一部のレビュアーが確認していないため、「レビュー不完全」として止める。1 回目のレビューでの `skipped` は、プラグインが無い等で続けても支障がないため報告するだけにする
