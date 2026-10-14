@@ -57,7 +57,19 @@ const reviewers = input.reviewers
 if (!Array.isArray(reviewers) || reviewers.length === 0 || !reviewers.every(r => typeof r === 'string' && r)) {
   throw new Error('args.reviewers must be a non-empty array of reviewer names')
 }
-const previous = Array.isArray(input.previous) ? input.previous : []
+const PREVIOUS_STATUSES = ['fixed', 'kept', 'suggestion', 'rejected']
+const previous = input.previous === undefined ? [] : input.previous
+// previous drives what reviewers and verifiers suppress, so a malformed entry must not slip
+// into the prompts as an unknown status.
+const isValidPrevious = p =>
+  p && typeof p === 'object' &&
+  PREVIOUS_STATUSES.includes(p.status) &&
+  typeof p.file === 'string' && p.file &&
+  Number.isInteger(p.line) &&
+  typeof p.summary === 'string' && p.summary
+if (!Array.isArray(previous) || !previous.every(isValidPrevious)) {
+  throw new Error(`args.previous must be an array of { status: ${PREVIOUS_STATUSES.join('|')}, file, line, summary }`)
+}
 const diffCmd = input.diff_cmd || `git diff ${input.base || 'main'}...HEAD`
 const isHighTier = input.tier === 'high'
 
@@ -158,6 +170,11 @@ const verifyPrompt = f => [
 // The majority is taken over the whole panel, not over the votes that came back, so failed
 // verifiers cannot let a single vote decide. Without a majority either way the finding is
 // returned as unverified rather than silently counted as refuted.
+// Severity is the most severe level that a panel majority rates at or above, so one vote
+// cannot promote a finding to Must-Fix on its own.
+const majoritySeverity = (standing, panel) => SEVERITIES.find((_, level) =>
+  standing.filter(v => SEVERITIES.indexOf(v.severity) <= level).length * 2 > panel)
+
 const decide = (votes, panel) => {
   const valid = votes.filter(Boolean)
   const standing = valid.filter(v => !v.refuted)
@@ -165,7 +182,7 @@ const decide = (votes, panel) => {
   if (standing.length * 2 > panel) {
     return {
       outcome: 'kept',
-      severity: SEVERITIES[Math.min(...standing.map(v => SEVERITIES.indexOf(v.severity)))],
+      severity: majoritySeverity(standing, panel),
       needs_human: standing.some(v => v.needs_human),
       reason: standing[0].reason,
     }
