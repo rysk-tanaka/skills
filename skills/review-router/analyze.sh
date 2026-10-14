@@ -9,7 +9,31 @@ HIGH_FILES=15       # files changed above this => high tier
 LOW_CHURN=50        # insertions+deletions at/below this (with few files, no risk) => low tier
 LOW_FILES=3         # files changed at/below this => low tier candidate
 
-BASE_BRANCH="${1:-main}"
+# The skill passes $ARGUMENTS as one quoted string, so tokenize all args with
+# `read -a`, which splits on whitespace without glob expansion.
+read -r -a TOKENS <<<"$*"
+
+BASE_BRANCH=""
+OPT_AGY=false
+OPT_LMS=false
+for token in "${TOKENS[@]+"${TOKENS[@]}"}"; do
+    case "${token}" in
+        --agy) OPT_AGY=true ;;
+        --lms) OPT_LMS=true ;;
+        -*)
+            echo "ERROR: unknown option '${token}' (supported: --agy, --lms)" >&2
+            exit 1
+            ;;
+        *)
+            if [ -n "${BASE_BRANCH}" ]; then
+                echo "ERROR: multiple base branches given ('${BASE_BRANCH}', '${token}')" >&2
+                exit 1
+            fi
+            BASE_BRANCH="${token}"
+            ;;
+    esac
+done
+BASE_BRANCH="${BASE_BRANCH:-main}"
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "ERROR: not inside a git work tree" >&2
@@ -137,6 +161,8 @@ jq -n \
     --argjson security "${dim_security}" \
     --argjson concurrency "${dim_concurrency}" \
     --arg tier "${tier}" \
+    --argjson agy "${OPT_AGY}" \
+    --argjson lms "${OPT_LMS}" \
     '{
         base: $base,
         files_changed: $files,
@@ -152,5 +178,9 @@ jq -n \
             security: $security,
             concurrency: $concurrency
         },
-        tier: $tier
+        tier: $tier,
+        options: {
+            agy: $agy,
+            lms: $lms
+        }
     }'

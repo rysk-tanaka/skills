@@ -2,7 +2,7 @@
 name: review-router
 description: 差分を分析して規模・観点に応じたレビューを自動振り分け (user)
 license: MIT
-argument-hint: "[base-branch]"
+argument-hint: "[base-branch] [--agy] [--lms]"
 allowed-tools: Bash(bash *) BashOutput Task
 ---
 
@@ -12,18 +12,24 @@ allowed-tools: Bash(bash *) BashOutput Task
 
 ## 入力
 
-`$ARGUMENTS` にベースブランチが渡される（省略可、デフォルト main）。
+`$ARGUMENTS` にベースブランチとオプションが渡される（どちらも省略可、ベースブランチのデフォルトは main）。
+
+- `--agy` - agy CLI（Gemini）による独立レビューを追加で実行する
+- `--lms` - ローカル LLM による独立レビューを追加で実行する
+
+agy CLI とローカル LLM は誤検出が多いため、指定したときだけ動かす。
 
 例
 
 - `/review-router` → main との差分
 - `/review-router develop` → develop との差分
+- `/review-router main --agy --lms` → main との差分に agy CLI とローカル LLM のレビューを加える
 
 ## 1. 差分の分析
 
 `bash ${CLAUDE_SKILL_DIR}/analyze.sh "$ARGUMENTS"` を実行し、出力 JSON を取得する。ワード分割・glob を防ぐため、`$ARGUMENTS` は必ずダブルクォートで囲む。
 
-- ベースブランチが見つからない等で非ゼロ終了した場合は、エラー内容を報告して終了する
+- ベースブランチが見つからない、未知のオプションが渡された等で非ゼロ終了した場合は、エラー内容を報告して終了する
 - 差分が空（files_changed が 0）の場合は、レビュー対象が無い旨を報告して終了する
 
 JSON の構造。
@@ -44,7 +50,11 @@ JSON の構造。
     "security": false,
     "concurrency": false
   },
-  "tier": "medium"
+  "tier": "medium",
+  "options": {
+    "agy": false,
+    "lms": false
+  }
 }
 ```
 
@@ -55,8 +65,10 @@ JSON の構造。
 | tier | 自動実行 | 提案のみ |
 | --- | --- | --- |
 | low | code-reviewer のみ | なし |
-| medium | code-reviewer ＋ true の観点に対応するサブエージェント ＋ agy CLI ＋ ローカル LLM（並行） | なし |
-| high | code-reviewer ＋ true の観点に対応するサブエージェント全部 ＋ agy CLI ＋ ローカル LLM（並行） | codex / `/code-review ultra` |
+| medium | code-reviewer ＋ true の観点に対応するサブエージェント（並行） | なし |
+| high | code-reviewer ＋ true の観点に対応するサブエージェント全部（並行） | codex / `/code-review ultra` / `--agy` `--lms` |
+
+agy CLI とローカル LLM は tier に関係なく、`options.agy` / `options.lms` が true のときだけ並行起動する。
 
 観点 → pr-review-toolkit サブエージェント対応。
 
@@ -66,9 +78,9 @@ JSON の構造。
 - `error_handling`: `pr-review-toolkit:silent-failure-hunter`
 - `comments_docs`: `pr-review-toolkit:comment-analyzer`
 
-`migrations` / `security` / `concurrency` には専用サブエージェントが無い。これらは tier 判定（true なら high）に効くが、専門レビューは常時起動の `code-reviewer` が一般観点としてカバーする。high tier では並行する agy CLI もこれらを拾う。専用エージェントが必要になったらこの表に追加する。
+`migrations` / `security` / `concurrency` には専用サブエージェントが無い。これらは tier 判定（true なら high）に効くが、専門レビューは常時起動の `code-reviewer` が一般観点としてカバーする。専用エージェントが必要になったらこの表に追加する。
 
-判定結果（tier・起動するレビュー一覧）を実行前にユーザーへ一行で示す。
+判定結果（tier・起動するレビュー一覧、agy CLI・ローカル LLM を使うか）を実行前にユーザーへ一行で示す。
 
 ## 3. レビューの実行
 
@@ -82,7 +94,7 @@ JSON の構造。
 
 該当プラグインが利用不可でサブエージェント type が存在しない場合は、その観点を飛ばして報告する。
 
-### agy CLI（medium tier 以上）
+### agy CLI（`options.agy` が true のときのみ）
 
 Antigravity CLI (agy) で Claude / Codex と系統の異なる Gemini による独立レビューを並行実行する（バックグラウンド起動可）。
 
@@ -100,9 +112,9 @@ REVIEW_TEXT
 - `--sandbox` はターミナルしか制限せず、agy が検証用ファイルを書き込むことがあるため、agy は使い捨ての detached worktree 内で動かす。それでも呼び出し元の作業ツリーや HEAD が変わった場合、ラッパーは終了コード 3 で終わる。レビュー結果は使ってよいが、`git status` を確認し、ユーザー自身の並行編集ではない、agy による意図しない変更があればユーザーに報告する
 - `agy` CLI が無い・未サインイン、diff が上限超過、または 3 以外の非ゼロで終了した場合は飛ばし、その旨を報告する。失敗はフロー全体を止めない。導入は mise の `aqua:google-antigravity/antigravity-cli`
 
-### ローカル LLM（medium tier 以上）
+### ローカル LLM（`options.lms` が true のときのみ）
 
-Mac mini 上の LM Studio（Qwen3.6-35B-A3B）で独立レビューを並行実行する。medium tier 以上では常に起動を試み、使えなければ飛ばす。接続確認は 5 秒で終わるため、試行コストは小さい。
+Mac mini 上の LM Studio（Qwen3.6-35B-A3B）で独立レビューを並行実行する。
 
 必ず `run_in_background=true` で起動する。モデルの読み込みや思考（`LMS_REVIEW_THINKING=true`）で長引くことがあり、ラッパーのタイムアウト（既定 900 秒）が Bash ツールの上限 600 秒を超えるため、フォアグラウンドでは打ち切られる。
 
@@ -120,7 +132,7 @@ REVIEW_TEXT
 
 ## 4. 結果の集約
 
-バックグラウンドで起動したレビュー（agy CLI・ローカル LLM）は、完了通知が届くまで集約しない。先に終わったサブエージェントの結果だけで結論を出さない。
+agy CLI・ローカル LLM をバックグラウンドで起動した場合は、完了通知が届くまで集約しない。先に終わったサブエージェントの結果だけで結論を出さない。
 
 全レビューの指摘をまとめ、重複を排除して以下に正規化する。
 
@@ -132,8 +144,8 @@ REVIEW_TEXT
 
 - カテゴリごとにグループ化し、各指摘に file:line を付ける
 - agy CLI・ローカル LLM 単独の指摘（他レビュアーと重複しない指摘）は、コードを読んで裏取りできるまで Suggestion に留め、実行ごとのブレ・誤検出を出口で吸収する
-- Must-Fix が無い場合はその旨を明記する
-- 停止条件を明示する。反復は「Must-Fix がゼロ」になったら打ち切り、指摘ゼロまでは回さない
+- Must-Fix・Important が無い場合はその旨を明記する
+- Must-Fix と Important はどちらも 6 章の修正ループで直す対象。Suggestion は報告のみで直さない
 
 ## 5. 追加レビューの提案（high tier のみ）
 
@@ -141,11 +153,34 @@ high tier では、自動実行に加えて以下を「必要なら手動で走�
 
 - `/codex:review <base>` - Codex による独立レビュー
 - `/code-review ultra` - クラウドの深掘りマルチエージェントレビュー
+- `/review-router <base> --agy --lms` - 系統の異なるモデルの視点を加える（今回指定していない場合のみ）
 
 ## 6. 修正と再レビュー
 
-Must-Fix と Important について修正方針を提示する。
+Must-Fix と Important が 0 件になるまで、ユーザーの承認を待たずに修正と再レビューを繰り返す。
 
-- ユーザーの承認を得てから修正する
-- 修正は指摘箇所のみ最小限に留める
-- 修正後は `/review-router <base>` での再レビューを提案する
+開始前に `git status --porcelain` を確認する。未コミットの変更が既にある場合は、修正がユーザーの変更と混ざって区別できなくなるため、ループに入らず指摘一覧を示して進め方を確認する。
+
+### 1 ラウンドの手順
+
+1. Must-Fix と Important を修正する。修正は指摘箇所のみ最小限に留め、Suggestion と、停止条件に挙げた設計判断を要する指摘には手を付けない
+2. 修正はコミットしない。コミットするかどうかはユーザーが決める。新規ファイルを作った場合は `git add -N <file>` で diff に載せる
+3. 1 回目と同じ pr-review-toolkit サブエージェントで再レビューする。範囲は `git diff $(git merge-base <base> HEAD)` とし、コミット済みの変更に未コミットの修正を加えた全体を見せる。前ラウンドまでの指摘一覧も渡し、解消済みの指摘・却下した指摘を繰り返さないよう指示する
+4. 4 章と同じ基準で集約し、Must-Fix・Important の件数を確認する
+
+agy CLI とローカル LLM はコミット済みの差分しか見ないため、再レビューでは起動しない。
+
+### 停止条件
+
+次のいずれかでループを止める。
+
+- Must-Fix と Important が 0 件になった（正常終了）
+- 3 ラウンド修正した。3 回目以降は収束しにくく、同じ箇所を行き来しやすいため
+- 前ラウンドと同じ指摘（同じファイル・同じ内容）が修正後も残った。直し方が合っていない可能性が高い
+- 残りが設計判断を要する指摘だけになった。修正方針が複数考えられるもの、仕様や公開インターフェースの変更を伴うもの、指摘同士が矛盾するものが該当し、これらは自動修正せずに残す
+
+### 終了時の報告
+
+- 停止理由と、残った指摘（あれば理由付き）
+- ラウンドごとの修正内容（file:line と一言）
+- `git diff --stat` の結果と、修正が未コミットである旨
