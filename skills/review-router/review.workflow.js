@@ -86,7 +86,8 @@ const formatPreviousForVerifier = () => {
   ].join('\n')
 }
 
-const reviewPrompt = name => [
+// Every reviewer gets the same task; its viewpoint comes from its agentType.
+const REVIEW_PROMPT = [
   `Review only the changes shown by \`${diffCmd}\` in the current repository. Do not review code outside that diff.`,
   input.context ? `Purpose of the change: ${input.context}` : '',
   `Report only findings with confidence >= ${MIN_CONFIDENCE}. Use line numbers from the current working tree.`,
@@ -97,7 +98,7 @@ const reviewPrompt = name => [
 
 phase('Review')
 const reviews = await parallel(reviewers.map(name => () =>
-  agent(reviewPrompt(name), {
+  agent(REVIEW_PROMPT, {
     label: `review:${name}`,
     phase: 'Review',
     agentType: `pr-review-toolkit:${name}`,
@@ -114,6 +115,8 @@ reviews.forEach((r, i) => {
     skipped.push(name)
     return
   }
+  // The prompt already asks for this threshold; filtering again keeps low-confidence findings
+  // out of verification even when a reviewer ignores the instruction.
   const confident = r.findings.filter(f => f.confidence >= MIN_CONFIDENCE)
   stats[name] = { reported: confident.length, adopted: 0 }
   confident.forEach(f => raw.push({ ...f, source: name }))
