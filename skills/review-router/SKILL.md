@@ -88,7 +88,9 @@ agy CLI とローカル LLM は tier に関係なく、`options.agy` / `options.
 
 同梱の Workflow スクリプトで、選んだサブエージェントの並行レビュー、重複の統合、指摘ごとの検証までを一度に回す。並べ方と検証の手順をスクリプトに固定し、モデルの判断で検証を省いたり、裏取りの無い指摘を通したりしないようにするため。
 
-`Workflow` ツールを `scriptPath: "${CLAUDE_SKILL_DIR}/review.workflow.js"` で呼び、`args` に次のオブジェクトを JSON の値のまま渡す（文字列化しない）。
+`${CLAUDE_SKILL_DIR}/review.workflow.js` を Read で読み、その内容を `Workflow` ツールの `script` に渡す。`scriptPath` は作業ディレクトリ内のファイルか Workflow ツール自身が返したパスしか受け付けず、skill のディレクトリを直接指定すると拒否されるため。Workflow の結果には実行したスクリプトの保存先が含まれるので、6 章の再レビューではそのパスを `scriptPath` に渡し、スクリプトの再送を省く。
+
+`args` には次のオブジェクトを JSON の値のまま渡す（文字列化しない）。
 
 ```json
 {
@@ -195,7 +197,7 @@ Must-Fix と Important が 0 件になるまで、ユーザーの承認を待た
 
 1. Must-Fix と Important を修正する。修正は指摘箇所のみ最小限に留め、Suggestion と、停止条件に挙げた設計判断を要する指摘には手を付けない
 2. 修正はコミットしない。コミットするかどうかはユーザーが決める。新規ファイルを作った場合は `git add -N <file>` で diff に載せる
-3. 1 回目と同じ pr-review-toolkit サブエージェントで、3 章の Workflow を再び呼んで再レビューする。`args` は 1 回目から次の 2 つを変える
+3. 1 回目と同じ pr-review-toolkit サブエージェントで、3 章の Workflow を再び呼んで再レビューする。スクリプトは 1 回目の結果が返した `scriptPath` で渡す。`args` は 1 回目から次の 2 つを変える
    - `diff_cmd`: `git merge-base <base> HEAD` で得たコミット ID を使い `git diff <merge-base>` とする。コミット済みの変更に未コミットの修正を加えた全体を見せるため
    - `previous`: 前ラウンドまでの指摘を `{"status", "file", "line", "summary"}` の配列で渡す。`status` は修正した指摘が `fixed`（出どころが agy CLI・ローカル LLM でも同じ）、設計判断のため残した指摘が `kept`、Suggestion が `suggestion`。スクリプトは `fixed` の修正が正しいかを確認させ、`kept` と `suggestion` は繰り返させない
 4. 4 章と同じ基準で集約し、Must-Fix・Important の件数を確認する
