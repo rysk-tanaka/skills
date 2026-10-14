@@ -73,8 +73,11 @@ fi
 STATE_FILE=$(state_path "${BRANCH}")
 
 RESULT=$(cat)
-if ! jq -e '(.stats | type == "object") and ((.skipped // []) | type == "array")' <<<"${RESULT}" >/dev/null 2>&1; then
-    echo "ERROR: stdin must be a JSON object with \"stats\" (object) and \"skipped\" (array)" >&2
+if ! jq -e '
+    (.stats | type == "object")
+    and ([.stats[] | type == "object" and ((.adopted // 0) | type) == "number"] | all)
+    and ((.skipped // []) | type == "array")' <<<"${RESULT}" >/dev/null 2>&1; then
+    echo "ERROR: stdin must be a JSON object with \"stats\" ({reviewer: {\"adopted\": number}}) and \"skipped\" (array)" >&2
     exit 1
 fi
 
