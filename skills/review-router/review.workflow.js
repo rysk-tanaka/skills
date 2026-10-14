@@ -74,12 +74,14 @@ const diffCmd = input.diff_cmd || `git diff ${input.base || 'main'}...HEAD`
 const isHighTier = input.tier === 'high'
 
 const previousLines = previous.map(p => `- [${p.status}] ${p.file}:${p.line} ${p.summary}`)
+// Fixes shift lines, so earlier findings are matched by file and summary, not by line.
+const PREVIOUS_HEADER = 'Findings from earlier rounds, with their status (line numbers are as first reported and may have shifted since):'
 
 const formatPrevious = () => {
   if (previous.length === 0) return ''
   return [
     '',
-    'Findings from earlier rounds, with their status:',
+    PREVIOUS_HEADER,
     ...previousLines,
     '- [fixed]: a fix was applied. Check that the fix is correct and complete, and report the finding again if it is not.',
     '- [kept] (left for a human design decision), [suggestion], and [rejected] (refuted by verification): do not report these again.',
@@ -92,7 +94,7 @@ const formatPreviousForVerifier = () => {
   if (previous.length === 0) return ''
   return [
     '',
-    'Findings from earlier rounds, with their status:',
+    PREVIOUS_HEADER,
     ...previousLines,
     'If this finding is the same issue as an earlier one: [kept] -> set needs_human=true; [suggestion] -> set severity=Suggestion; [rejected] -> set refuted=true unless the code has changed so that the scenario now happens.',
   ].join('\n')
