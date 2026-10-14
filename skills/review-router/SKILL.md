@@ -3,7 +3,7 @@ name: review-router
 description: 差分を分析して規模・観点に応じたレビューを自動振り分けし、Must-Fix・Important を未コミットのまま自動修正して再レビューする (user)
 license: MIT
 argument-hint: "[base-branch] [--agy] [--lms]"
-allowed-tools: Bash(bash *) Bash(git status *) Bash(git diff *) Bash(git merge-base *) Bash(git add -N *) BashOutput Task Workflow Edit Write
+allowed-tools: Bash(bash *) Bash(git status *) Bash(git diff *) Bash(git merge-base *) Bash(git add -N *) BashOutput Read Task Workflow Edit Write
 ---
 
 # レビュー・ルーター
@@ -86,7 +86,7 @@ agy CLI とローカル LLM は tier に関係なく、`options.agy` / `options.
 
 ### pr-review-toolkit サブエージェント
 
-同梱の Workflow スクリプトで、選んだサブエージェントの並行レビュー、重複の統合、指摘ごとの検証までを一度に回す。並べ方と検証の手順をスクリプトに固定し、モデルの判断で検証を省いたり、裏取りの無い指摘を通したりしないようにするため。
+同梱の Workflow スクリプトで、選んだサブエージェントの並行レビューと、指摘ごとの検証までを一度に回す。並べ方と検証の手順をスクリプトに固定し、モデルの判断で検証を省いたり、裏取りの無い指摘を通したりしないようにするため。
 
 `${CLAUDE_SKILL_DIR}/review.workflow.js` を Read で読み、その内容を `Workflow` ツールの `script` に渡す。`scriptPath` は作業ディレクトリ内のファイルか Workflow ツール自身が返したパスしか受け付けず、skill のディレクトリを直接指定すると拒否されるため。Workflow の結果には実行したスクリプトの保存先が含まれるので、6 章の再レビューではそのパスを `scriptPath` に渡し、スクリプトの再送を省く。
 
@@ -112,17 +112,21 @@ agy CLI とローカル LLM は tier に関係なく、`options.agy` / `options.
 スクリプトの処理。
 
 1. Review: 各サブエージェントを並行起動し、confidence 80 以上の指摘を構造化して受け取る
-2. 統合: 別々のレビュアーが同じファイルの近い行（±3 行）を指摘したものを 1 件にまとめる
-3. Verify: 指摘ごとに反証役のエージェントがコードを読んで誤りを探し、確認できなければ却下する。high tier の Must-Fix 候補は 3 票の多数決にする。残った指摘の重大度を正規化し、設計判断が要るものに `needs_human` を付ける
+2. Verify: 指摘を 1 件ずつ、反証役のエージェントがコードを読んで誤りを探し、確認できなければ却下する。high tier の Must-Fix 候補は 3 票の多数決にする。多数決は委員の人数を分母に取り、検証役が失敗して過半数に届かなければ `unverified` に回す。残った指摘の重大度を正規化し、設計判断が要るものに `needs_human` を付ける
+
+近い行の指摘でも位置だけでは統合しない。別のバグが検証されないまま消えるのを防ぐため。重複は 4 章の集約でまとめる。
 
 Workflow はバックグラウンドで動き、完了すると通知が届く。戻り値は次の形。
 
-- `findings` - 検証を通った指摘。`severity`（Must-Fix / Important / Suggestion）、`needs_human`、`sources`（指摘したレビュアー）、`reason`（検証の根拠）を持つ
+- `findings` - 検証を通った指摘。`severity`（Must-Fix / Important / Suggestion）、`needs_human`、`source`（指摘したレビュアー）、`reason`（検証の根拠）を持つ
 - `rejected` - 検証で却下した指摘と理由
+- `unverified` - 検証役が失敗して、採用とも却下とも決まらなかった指摘。レビュアーが付けた `severity` を持つ
 - `stats` - レビュアーごとの報告数 `reported` と採用数 `adopted`
-- `skipped` - 起動できなかったレビュアー（プラグインが無い等）。報告に含める
+- `skipped` - 起動できなかった、または結果を返さなかったレビュアー。報告に含める
 
-`Workflow` ツールが使えない環境では、従来どおり `Task` ツールでサブエージェントを並行起動する（1 メッセージに複数 tool 呼び出し）。指示は「`diff_cmd` の範囲に限定する」「confidence 80 以上だけ報告する」「各指摘に file:line と確信度を含める」の 3 点。この場合は 4 章の集約で、各指摘をコードと突き合わせて裏取りする。
+`args` が不正な場合と、全レビュアーが結果を返さなかった場合、スクリプトはエラーで終わる。このときはそのラウンドのレビューが行われなかったものとして扱い、指摘 0 件とは見なさない。エラー内容を報告し、修正ループに入っている場合はそこで止める。
+
+`Workflow` ツールが使えない環境では、従来どおり `Task` ツールでサブエージェントを並行起動する（1 メッセージに複数 tool 呼び出し）。指示は「`diff_cmd` の範囲に限定する」「confidence 80 以上だけ報告する」「各指摘に file:line と確信度を含める」の 3 点。6 章の再レビューでは、`args` の `diff_cmd` と `previous` に当たる内容（範囲と、前ラウンドまでの指摘とその状態、`fixed` は修正が正しいかを確認し、それ以外は繰り返さないこと）をプロンプトに含める。この経路では 4 章の集約で、各指摘をコードと突き合わせて裏取りする。
 
 ### agy CLI（`options.agy` が true のときのみ）
 
@@ -164,7 +168,7 @@ REVIEW_TEXT
 
 Workflow と、起動した場合の agy CLI・ローカル LLM は、すべての完了通知が届くまで集約しない。先に終わった結果だけで結論を出さない。
 
-Workflow の `findings` は検証と正規化が済んでいるので、そのまま使う。agy CLI・ローカル LLM の指摘は `findings` と重複を排除してから加える。重大度は以下の 3 段階。
+Workflow の `findings` は検証と正規化が済んでいるので、そのまま使う。同じ問題を複数のレビュアーが指摘していれば 1 件にまとめる。`unverified` のうち Must-Fix・Important は、コードを読んで自分で裏取りし、成立すれば `findings` と同様に扱い、成立しなければ却下する。裏取りせずに捨てたり、そのまま修正に回したりしない。agy CLI・ローカル LLM の指摘は、これらと重複を排除してから加える。重大度は以下の 3 段階。
 
 - Must-Fix - マージ前に必ず直す（バグ・セキュリティ・データ損失）
 - Important - 直すべき（重要だが非ブロッカー）
@@ -197,10 +201,11 @@ Must-Fix と Important が 0 件になるまで、ユーザーの承認を待た
 
 1. Must-Fix と Important を修正する。修正は指摘箇所のみ最小限に留め、Suggestion と、停止条件に挙げた設計判断を要する指摘には手を付けない
 2. 修正はコミットしない。コミットするかどうかはユーザーが決める。新規ファイルを作った場合は `git add -N <file>` で diff に載せる
-3. 1 回目と同じ pr-review-toolkit サブエージェントで、3 章の Workflow を再び呼んで再レビューする。スクリプトは 1 回目の結果が返した `scriptPath` で渡す。`args` は 1 回目から次の 2 つを変える
+3. 3 章の Workflow を再び呼んで再レビューする。スクリプトは 1 回目の結果が返した `scriptPath` で渡す。`args` は 1 回目から次の 3 つを変える
+   - `reviewers`: 1 回目のレビュアーから、1 回目の `skipped` を除く。プラグインが無い等で起動できないレビュアーを入れたままにすると、毎回 `skipped` になり再レビューが必ず不完全になるため
    - `diff_cmd`: `git merge-base <base> HEAD` で得たコミット ID を使い `git diff <merge-base>` とする。コミット済みの変更に未コミットの修正を加えた全体を見せるため
-   - `previous`: 前ラウンドまでの指摘を `{"status", "file", "line", "summary"}` の配列で渡す。`status` は修正した指摘が `fixed`（出どころが agy CLI・ローカル LLM でも同じ）、設計判断のため残した指摘が `kept`、Suggestion が `suggestion`。スクリプトは `fixed` の修正が正しいかを確認させ、`kept` と `suggestion` は繰り返させない
-4. 4 章と同じ基準で集約し、Must-Fix・Important の件数を確認する
+   - `previous`: 前ラウンドまでの指摘を `{"status", "file", "line", "summary"}` の配列で渡す。`status` は修正した指摘が `fixed`（出どころが agy CLI・ローカル LLM でも同じ）、設計判断のため残した指摘が `kept`、Suggestion が `suggestion`、却下した指摘が `rejected`。`rejected` には Workflow の `rejected` に入った指摘に加え、4 章の集約で自分で裏取りして却下した指摘（`unverified` や agy CLI・ローカル LLM の指摘）も含める。スクリプトは `fixed` の修正が正しいかを確認させ、それ以外は繰り返させない。再報告された場合も、検証役が `previous` の状態に合わせて扱いを揃える
+4. 4 章と同じ基準で集約し、Must-Fix・Important の件数を確認する。再レビューで `skipped` が空でない場合、そのラウンドは一部のレビュアーが確認していないため、「レビュー不完全」として止める。1 回目のレビューでの `skipped` は、プラグインが無い等で続けても支障がないため報告するだけにする
 
 agy CLI とローカル LLM はコミット済みの差分しか見ないため、再レビューでは起動しない。
 
@@ -208,7 +213,8 @@ agy CLI とローカル LLM はコミット済みの差分しか見ないため�
 
 次のいずれかでループを止める。
 
-- Must-Fix と Important が 0 件になった（正常終了）
+- Must-Fix と Important が 0 件になった（正常終了）。再レビューのラウンドでは `skipped` が空であることが前提
+- 再レビューで `skipped` が空でなかった、または Workflow がエラーで終わった（レビュー不完全）
 - 3 ラウンド修正した。3 回目以降は収束しにくく、同じ箇所を行き来しやすいため
 - 修正を試みた指摘と同じもの（同じファイル・同じ内容）が修正後も残った。直し方が合っていない可能性が高い。設計判断のため残した指摘はこの判定に含めない
 - 残りが設計判断を要する指摘だけになった。修正方針が複数考えられるもの、仕様や公開インターフェースの変更を伴うもの、指摘同士が矛盾するものが該当し、これらは自動修正せずに残す
